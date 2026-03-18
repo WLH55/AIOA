@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# 环境变量（保留模板，忽略实际配置）
+.env.development
+.env.production
+.env.test
+.env.local
+.env.*.local
+
+# 日志
+storage/logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/
+
+# 构建
+dist/
+build/
+*.egg-info/
