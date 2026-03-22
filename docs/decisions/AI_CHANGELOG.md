@@ -117,6 +117,77 @@
 
 ---
 
+### 2026-03-22 Decision #011: WebSocket 认证方案
+- **决策**: WebSocket 连接通过 Header 传递 JWT Token 认证
+- **原因**: 与 HTTP 认证一致、安全性高、实现简单
+- **影响**: 需要在 WebSocket 握手阶段解析 Header
+- **替代方案**: URL 参数传递（安全性较低）
+- **Files**: app/api/v1/ws.py, app/service/ws_manager.py
+
+---
+
+### 2026-03-22 Decision #012: WebSocket 单连接限制
+- **决策**: 同一用户只能有一个 WebSocket 连接，新连接踢掉旧连接
+- **原因**: 避免资源浪费、简化状态管理、符合 AI 聊天场景（一对一）
+- **影响**: 用户在多设备登录时会被踢下线
+- **替代方案**: 多连接支持（需要更复杂的状态管理）
+- **Files**: app/service/ws_manager.py
+
+---
+
+### 2026-03-22 Decision #013: WebSocket 心跳机制
+- **决策**: 采用服务端心跳检测，30 秒间隔，60 秒超时
+- **原因**: 及时发现僵尸连接、释放资源、服务端主动可控
+- **影响**: 需要客户端实现 pong 响应逻辑
+- **替代方案**: 客户端心跳（依赖客户端可靠性）
+- **Files**: app/service/ws_manager.py
+
+---
+
+### 2026-03-22 Decision #014: WebSocket 消息格式
+- **决策**: 使用 JSON 格式，包含 type 字段区分消息类型
+- **原因**: 可读性好、调试方便、与 FastAPI 集成容易
+- **影响**: 相比二进制格式有更大的消息体积
+- **替代方案**: Protobuf 二进制格式（性能更高，但开发成本高）
+- **Files**: app/dto/ws/message.py
+
+---
+
+## 实现进度记录
+
+### 2026-03-22 HTTP 认证模块实现进度
+
+**Spec 文档**: `docs/specs/001-auth-framework/`
+
+| Step | 内容 | 状态 | 备注 |
+|------|------|------|------|
+| Step 1 | 项目初始化 | ✅ 已完成 | 之前已存在 |
+| Step 2 | 配置模块 | ✅ 已完成 | 更新了 JWT/MongoDB/Redis 配置 |
+| Step 3 | 数据模型 | ✅ 已完成 | `app/models/user.py` |
+| Step 4 | 数据访问层 | ✅ 已完成 | `app/repository/user_repository.py` |
+| Step 5 | 安全模块 | ✅ 已完成 | `app/security/` (jwt, password, dependencies) |
+| Step 6 | DTO 定义 | ✅ 已完成 | `app/dto/` (auth, user) |
+| Step 7 | 业务逻辑层 | ✅ 已完成 | `app/services/auth_service.py` |
+| Step 8 | API 路由层 | ✅ 已完成 | `app/routers/auth.py` |
+| Step 9 | 中间件 | ✅ 已完成 | 更新了 ResourceNotFoundException 处理 |
+| Step 10 | 应用入口 | ✅ 已完成 | `app/main.py` - 初始化 Beanie/Redis |
+| Step 11 | 测试 | ❌ 待实现 | `tests/` |
+| Step 12 | WebSocket 连接管理器 | ❌ 待实现 | `app/services/ws_manager.py` |
+| Step 13 | WebSocket 路由 | ❌ 待实现 | `app/routers/ws.py` |
+| Step 14 | WebSocket DTO | ❌ 待实现 | `app/dto/ws/` |
+| Step 15 | WebSocket 测试 | ❌ 待实现 | `tests/api/test_ws.py` |
+
+**已实现的 API 端点**:
+- `POST /api/v1/auth/register` - 用户注册
+- `POST /api/v1/auth/login` - 用户登录
+- `POST /api/v1/auth/refresh` - Token 刷新
+- `POST /api/v1/auth/logout` - 用户登出
+- `GET /api/v1/auth/me` - 获取当前用户信息
+
+**下一步**: 实现 WebSocket 模块 (Step 12-15)
+
+---
+
 ## 待决策项
 
 以下问题需要在后续迭代中决策：
@@ -129,3 +200,5 @@
 - [ ] 日志系统（结构化日志、日志收集）
 - [ ] 监控和告警方案
 - [ ] 部署方案（Docker/K8s）
+- [ ] WebSocket 多实例部署（是否需要 Redis Pub/Sub）
+- [ ] WebSocket 消息持久化（是否需要）

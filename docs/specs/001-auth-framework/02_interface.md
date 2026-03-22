@@ -6,6 +6,8 @@
 
 **Base URL**: `http://localhost:8000`
 
+**WebSocket URL**: `ws://localhost:8000`
+
 **认证方式**: Bearer Token (JWT)
 
 ---
@@ -65,6 +67,16 @@ Content-Type: application/json
 
 #### Body
 
+统一响应格式（`ApiResponse`）：
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| code | int | 响应码，200 表示成功 |
+| message | string | 响应消息 |
+| data | object | 响应数据 |
+
+**data 对象**：
+
 | 字段 | 类型 | 说明 |
 |-----|------|------|
 | user_id | string | 用户唯一标识（MongoDB ObjectId）|
@@ -75,9 +87,13 @@ Content-Type: application/json
 
 ```json
 {
-  "user_id": "507f1f77bcf86cd799439011",
-  "username": "zhangsan",
-  "email": "zhangsan@company.com"
+  "code": 200,
+  "message": "success",
+  "data": {
+    "user_id": "507f1f77bcf86cd799439011",
+    "username": "zhangsan",
+    "email": "zhangsan@company.com"
+  }
 }
 ```
 
@@ -93,8 +109,9 @@ Content-Type: application/json
 
 ```json
 {
-  "detail": "Username already exists",
-  "code": "USERNAME_EXISTS"
+  "code": 400,
+  "message": "Username already exists",
+  "data": null
 }
 ```
 
@@ -155,6 +172,16 @@ Content-Type: application/json
 
 #### Body
 
+统一响应格式（`ApiResponse`）：
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| code | int | 响应码，200 表示成功 |
+| message | string | 响应消息 |
+| data | object | 响应数据 |
+
+**data 对象**：
+
 | 字段 | 类型 | 说明 |
 |-----|------|------|
 | access_token | string | JWT Access Token |
@@ -163,7 +190,7 @@ Content-Type: application/json
 | expires_in | number | Access Token 过期时间（秒）|
 | user | object | 用户信息 |
 
-#### user 对象
+**user 对象**：
 
 | 字段 | 类型 | 说明 |
 |-----|------|------|
@@ -177,16 +204,20 @@ Content-Type: application/json
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJleHAiOjE2Nzg5NjY0MDAsInR5cGUiOiJhY2Nlc3MifQ.signature",
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJleHAiOjE2Nzk1NzEyMDAsInR5cGUiOiJyZWZyZXNoInQ.signature",
-  "token_type": "bearer",
-  "expires_in": 604800,
-  "user": {
-    "user_id": "507f1f77bcf86cd799439011",
-    "username": "zhangsan",
-    "email": "zhangsan@company.com",
-    "full_name": "张三",
-    "roles": ["user"]
+  "code": 200,
+  "message": "success",
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJleHAiOjE2Nzg5NjY0MDAsInR5cGUiOiJhY2Nlc3MifQ.signature",
+    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI1MDdmMWY3N2JjZjg2Y2Q3OTk0MzkwMTEiLCJleHAiOjE2Nzk1NzEyMDAsInR5cGUiOiJyZWZyZXNoInQ.signature",
+    "token_type": "bearer",
+    "expires_in": 604800,
+    "user": {
+      "user_id": "507f1f77bcf86cd799439011",
+      "username": "zhangsan",
+      "email": "zhangsan@company.com",
+      "full_name": "张三",
+      "roles": ["user"]
+    }
   }
 }
 ```
@@ -203,8 +234,9 @@ Content-Type: application/json
 
 ```json
 {
-  "detail": "Invalid username or password",
-  "code": "INVALID_CREDENTIALS"
+  "code": 401,
+  "message": "Invalid username or password",
+  "data": null
 }
 ```
 
@@ -251,6 +283,16 @@ Content-Type: application/json
 
 #### Body
 
+统一响应格式（`ApiResponse`）：
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| code | int | 响应码，200 表示成功 |
+| message | string | 响应消息 |
+| data | object | 响应数据 |
+
+**data 对象**：
+
 | 字段 | 类型 | 说明 |
 |-----|------|------|
 | access_token | string | 新的 JWT Access Token |
@@ -261,9 +303,13 @@ Content-Type: application/json
 
 ```json
 {
-  "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "token_type": "bearer",
-  "expires_in": 604800
+  "code": 200,
+  "message": "success",
+  "data": {
+    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "token_type": "bearer",
+    "expires_in": 604800
+  }
 }
 ```
 
@@ -279,8 +325,9 @@ Content-Type: application/json
 
 ```json
 {
-  "detail": "Refresh token has expired",
-  "code": "EXPIRED_TOKEN"
+  "code": 401,
+  "message": "Refresh token has expired",
+  "data": null
 }
 ```
 
@@ -320,6 +367,16 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 #### Body
 
+统一响应格式（`ApiResponse`）：
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| code | int | 响应码，200 表示成功 |
+| message | string | 响应消息 |
+| data | object | 响应数据 |
+
+**data 对象**：
+
 | 字段 | 类型 | 说明 |
 |-----|------|------|
 | user_id | string | 用户 ID |
@@ -341,20 +398,24 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-  "user_id": "507f1f77bcf86cd799439011",
-  "username": "zhangsan",
-  "email": "zhangsan@company.com",
-  "full_name": "张三",
-  "department": "技术部",
-  "position": "后端工程师",
-  "employee_id": "E001",
-  "phone": "13800138000",
-  "avatar_url": null,
-  "status": "active",
-  "roles": ["user"],
-  "created_at": "2026-03-15T10:30:00Z",
-  "updated_at": "2026-03-15T10:30:00Z",
-  "last_login_at": "2026-03-15T14:25:00Z"
+  "code": 200,
+  "message": "success",
+  "data": {
+    "user_id": "507f1f77bcf86cd799439011",
+    "username": "zhangsan",
+    "email": "zhangsan@company.com",
+    "full_name": "张三",
+    "department": "技术部",
+    "position": "后端工程师",
+    "employee_id": "E001",
+    "phone": "13800138000",
+    "avatar_url": null,
+    "status": "active",
+    "roles": ["user"],
+    "created_at": "2026-03-15T10:30:00Z",
+    "updated_at": "2026-03-15T10:30:00Z",
+    "last_login_at": "2026-03-15T14:25:00Z"
+  }
 }
 ```
 
@@ -371,8 +432,9 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-  "detail": "Not authenticated",
-  "code": "UNAUTHORIZED"
+  "code": 401,
+  "message": "Not authenticated",
+  "data": null
 }
 ```
 
@@ -414,7 +476,11 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
 
 ```json
 {
-  "message": "Logged out successfully"
+  "code": 200,
+  "message": "success",
+  "data": {
+    "message": "Logged out successfully"
+  }
 }
 ```
 
@@ -495,29 +561,26 @@ class User(Document):
 
 ## 通用错误格式
 
-所有错误响应遵循以下格式：
+所有错误响应遵循统一格式（`ApiResponse`）：
 
 ```json
 {
-  "detail": "错误描述",
-  "code": "ERROR_CODE",
-  "timestamp": "2026-03-15T14:25:00Z"
+  "code": 400,
+  "message": "错误描述",
+  "data": null
 }
 ```
 
 ### 常见错误码
 
-| 错误码 | HTTP Status | 说明 |
-|--------|-------------|------|
-| VALIDATION_ERROR | 422 | 请求参数校验失败 |
-| UNAUTHORIZED | 401 | 未认证 |
-| INVALID_CREDENTIALS | 401 | 用户名或密码错误 |
-| INVALID_TOKEN | 401 | Token 无效 |
-| EXPIRED_TOKEN | 401 | Token 已过期 |
-| USERNAME_EXISTS | 400 | 用户名已存在 |
-| EMAIL_EXISTS | 400 | 邮箱已存在 |
-| USER_NOT_FOUND | 404 | 用户不存在 |
-| USER_INACTIVE | 403 | 用户已被禁用 |
+| HTTP Status | 说明 |
+|-------------|------|
+| 400 | 请求参数错误（用户名/邮箱已存在等）|
+| 401 | 未认证或 Token 无效/过期 |
+| 403 | 权限不足（用户被禁用）|
+| 404 | 资源不存在 |
+| 422 | 请求参数校验失败 |
+| 500 | 服务器内部错误 |
 
 ---
 
@@ -541,4 +604,231 @@ class User(Document):
 
 5. 登出
    POST /api/v1/auth/logout
+
+6. 建立 WebSocket 连接
+   ws://localhost:8000/api/v1/ws/chat
+   Header: Authorization: Bearer {access_token}
+   → 连接成功，开始 AI 聊天
 ```
+
+---
+
+## WebSocket 接口定义
+
+### 6. WebSocket 连接
+
+#### 基本信息
+
+| 项目 | 值 |
+|-----|---|
+| URL | `ws://localhost:8000/api/v1/ws/chat` |
+| 协议 | WebSocket (RFC 6455) |
+| 认证 | Bearer Token (通过 Header 传递) |
+| 消息格式 | JSON |
+
+#### 连接认证
+
+**请求头**：
+```
+Authorization: Bearer {access_token}
+```
+
+**连接成功响应**：
+```json
+{
+  "type": "connected",
+  "user_id": "507f1f77bcf86cd799439011",
+  "username": "zhangsan",
+  "session_id": "sess_abc123",
+  "timestamp": "2026-03-22T10:30:00Z"
+}
+```
+
+**认证失败响应**：
+
+| 错误码 | 含义 | 触发条件 |
+|--------|------|---------|
+| 4001 | 未认证 | 缺少 Authorization Header |
+| 4002 | Token 无效 | Token 格式错误或签名验证失败 |
+| 4003 | Token 已过期 | access_token 已过期 |
+| 4004 | 用户不存在 | Token 中的 user_id 找不到对应用户 |
+
+**错误响应示例**：
+```json
+{
+  "type": "error",
+  "code": 4001,
+  "message": "Authentication required"
+}
+```
+
+---
+
+#### 消息类型定义
+
+##### 客户端 → 服务端
+
+###### 1. 聊天消息
+
+```json
+{
+  "type": "chat",
+  "content": "你好，请帮我写一份周报",
+  "conversation_id": "conv_001",
+  "options": {
+    "stream": true
+  }
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|-----|------|------|------|
+| type | string | 是 | 固定值 "chat" |
+| content | string | 是 | 用户消息内容 |
+| conversation_id | string | 否 | 会话 ID，不传则新建会话 |
+| options | object | 否 | 可选参数 |
+| options.stream | boolean | 否 | 是否流式返回，默认 true |
+
+###### 2. 心跳响应
+
+```json
+{
+  "type": "pong"
+}
+```
+
+###### 3. 关闭连接
+
+```json
+{
+  "type": "close"
+}
+```
+
+---
+
+##### 服务端 → 客户端
+
+###### 1. 连接成功
+
+```json
+{
+  "type": "connected",
+  "user_id": "507f1f77bcf86cd799439011",
+  "username": "zhangsan",
+  "session_id": "sess_abc123",
+  "timestamp": "2026-03-22T10:30:00Z"
+}
+```
+
+###### 2. 聊天消息响应（流式）
+
+```json
+{
+  "type": "message",
+  "content": "好的，我来帮您写周报...",
+  "conversation_id": "conv_001",
+  "message_id": "msg_001",
+  "is_final": false,
+  "timestamp": "2026-03-22T10:30:01Z"
+}
+```
+
+| 字段 | 类型 | 说明 |
+|-----|------|------|
+| type | string | 固定值 "message" |
+| content | string | AI 响应内容片段 |
+| conversation_id | string | 会话 ID |
+| message_id | string | 消息 ID |
+| is_final | boolean | 是否为最后一条消息 |
+| timestamp | string | 时间戳（ISO 8601）|
+
+###### 3. 心跳检测
+
+```json
+{
+  "type": "ping"
+}
+```
+
+客户端需在 60 秒内响应 `{"type": "pong"}`，否则连接将被断开。
+
+###### 4. 被踢下线
+
+```json
+{
+  "type": "kicked",
+  "reason": "new_login",
+  "message": "您的账号在其他设备登录，当前连接已断开"
+}
+```
+
+| reason | 说明 |
+|--------|------|
+| new_login | 新设备登录，踢掉旧连接 |
+| server_shutdown | 服务器关闭 |
+
+###### 5. 错误消息
+
+```json
+{
+  "type": "error",
+  "code": 5001,
+  "message": "AI service unavailable",
+  "conversation_id": "conv_001"
+}
+```
+
+**错误码范围**：
+
+| 范围 | 类别 |
+|-----|------|
+| 4001-4099 | 认证错误 |
+| 5001-5099 | 服务端错误 |
+| 6001-6099 | 业务错误 |
+
+---
+
+#### 心跳机制
+
+| 项目 | 值 |
+|-----|---|
+| 心跳间隔 | 30 秒 |
+| 响应超时 | 60 秒 |
+| 超时处理 | 断开连接 |
+
+**流程**：
+1. 服务端每 30 秒发送 `{"type": "ping"}`
+2. 客户端需在 60 秒内响应 `{"type": "pong"}`
+3. 超时未响应，服务端主动断开连接
+
+---
+
+#### 单连接限制
+
+同一用户同时只能有一个 WebSocket 连接：
+
+1. 用户 A 在设备 1 建立连接
+2. 用户 A 在设备 2 建立新连接
+3. 设备 1 收到 `{"type": "kicked", "reason": "new_login"}`
+4. 设备 1 连接被关闭
+5. 设备 2 连接成功
+
+---
+
+#### 连接关闭
+
+**正常关闭**：
+- 客户端发送 `{"type": "close"}`
+- 服务端响应后关闭连接
+
+**异常关闭**：
+- 心跳超时
+- Token 过期
+- 服务端错误
+- 网络中断
+
+关闭时服务端清理：
+- 删除 `sessionId → userId` 映射
+- 删除 `userId → websocket` 映射
+- 记录断开日志

@@ -4,10 +4,10 @@
 
 | 层级 | 测试内容 | 覆盖范围 |
 |-----|---------|---------|
-| **单元测试** | Service 层业务逻辑、Repository 层数据访问、安全模块 | 核心函数、边界条件 |
-| **集成测试** | API 层端到端测试 | 完整请求/响应流程 |
-| **契约测试** | DTO 校验、Pydantic 模型 | 字段类型、校验规则 |
-| **性能测试** | 登录接口、Token 验证 | 响应时间要求 |
+| **单元测试** | Service 层业务逻辑、Repository 层数据访问、安全模块、WebSocket 管理器 | 核心函数、边界条件 |
+| **集成测试** | API 层端到端测试、WebSocket 端到端测试 | 完整请求/响应流程 |
+| **契约测试** | DTO 校验、Pydantic 模型、WebSocket 消息格式 | 字段类型、校验规则 |
+| **性能测试** | 登录接口、Token 验证、WebSocket 连接建立 | 响应时间要求 |
 
 ---
 
@@ -76,9 +76,13 @@ POST /api/v1/auth/register
 **期望响应**：
 ```json
 {
-  "user_id": "507f1f77bcf86cd799439011",
-  "username": "newuser",
-  "email": "new@example.com"
+  "code": 200,
+  "message": "success",
+  "data": {
+    "user_id": "507f1f77bcf86cd799439011",
+    "username": "newuser",
+    "email": "new@example.com"
+  }
 }
 ```
 
@@ -96,8 +100,9 @@ POST /api/v1/auth/register
 **期望响应**：
 ```json
 {
-  "detail": "Username already exists",
-  "code": "USERNAME_EXISTS"
+  "code": 400,
+  "message": "Username already exists",
+  "data": null
 }
 ```
 
@@ -135,7 +140,9 @@ POST /api/v1/auth/register
 **期望响应**：
 ```json
 {
-  "detail": "Password must be at least 8 characters with letters and numbers"
+  "code": 400,
+  "message": "Password must be at least 8 characters with letters and numbers",
+  "data": null
 }
 ```
 
@@ -173,14 +180,18 @@ POST /api/v1/auth/register
 **期望响应**：
 ```json
 {
-  "access_token": "eyJhbGci...",
-  "refresh_token": "eyJhbGci...",
-  "token_type": "bearer",
-  "expires_in": 604800,
-  "user": {
-    "user_id": "...",
-    "username": "testuser1",
-    "email": "test1@example.com"
+  "code": 200,
+  "message": "success",
+  "data": {
+    "access_token": "eyJhbGci...",
+    "refresh_token": "eyJhbGci...",
+    "token_type": "bearer",
+    "expires_in": 604800,
+    "user": {
+      "user_id": "...",
+      "username": "testuser1",
+      "email": "test1@example.com"
+    }
   }
 }
 ```
@@ -210,8 +221,9 @@ POST /api/v1/auth/register
 **期望响应**：
 ```json
 {
-  "detail": "Invalid username or password",
-  "code": "INVALID_CREDENTIALS"
+  "code": 401,
+  "message": "Invalid username or password",
+  "data": null
 }
 ```
 
@@ -251,14 +263,18 @@ POST /api/v1/auth/register
 **期望响应**：
 ```json
 {
-  "user_id": "...",
-  "username": "testuser1",
-  "email": "test1@example.com",
-  "full_name": "测试用户1",
-  "status": "active",
-  "roles": ["user"],
-  "created_at": "2026-03-15T10:30:00Z",
-  "last_login_at": "2026-03-15T14:25:00Z"
+  "code": 200,
+  "message": "success",
+  "data": {
+    "user_id": "...",
+    "username": "testuser1",
+    "email": "test1@example.com",
+    "full_name": "测试用户1",
+    "status": "active",
+    "roles": ["user"],
+    "created_at": "2026-03-15T10:30:00Z",
+    "last_login_at": "2026-03-15T14:25:00Z"
+  }
 }
 ```
 
@@ -316,9 +332,13 @@ POST /api/v1/auth/register
 **期望响应**：
 ```json
 {
-  "access_token": "eyJhbGci...",
-  "token_type": "bearer",
-  "expires_in": 604800
+  "code": 200,
+  "message": "success",
+  "data": {
+    "access_token": "eyJhbGci...",
+    "token_type": "bearer",
+    "expires_in": 604800
+  }
 }
 ```
 
@@ -376,6 +396,181 @@ POST /api/v1/auth/register
 | **前置条件** | 无 |
 | **测试步骤** | 1. 同时发送 10 个相同用户名的注册请求<br>2. 验证只有一个成功 |
 | **期望结果** | 只有第一个请求成功，其余返回 USERNAME_EXISTS |
+
+---
+
+## WebSocket 测试用例
+
+### TC21: WebSocket 连接 - 无 Token
+
+| 编号 | TC021 |
+|-----|-------|
+| **场景** | 不携带 Token 连接 WebSocket |
+| **前置条件** | 无 |
+| **测试步骤** | 1. 连接 ws://host/api/v1/ws/chat<br>2. 不携带 Authorization Header |
+| **期望结果** | 连接被拒绝，返回错误码 4001 |
+
+**期望响应**：
+```json
+{
+  "type": "error",
+  "code": 4001,
+  "message": "Authentication required"
+}
+```
+
+---
+
+### TC22: WebSocket 连接 - 无效 Token
+
+| 编号 | TC022 |
+|-----|-------|
+| **场景** | 携带无效 Token 连接 |
+| **前置条件** | 无 |
+| **测试步骤** | 1. 连接 WebSocket<br>2. 携带格式错误的 Token |
+| **期望结果** | 连接被拒绝，返回错误码 4002 |
+
+---
+
+### TC23: WebSocket 连接 - 过期 Token
+
+| 编号 | TC023 |
+|-----|-------|
+| **场景** | 携带过期 Token 连接 |
+| **前置条件** | Token 已过期 |
+| **测试步骤** | 1. 连接 WebSocket<br>2. 携带过期的 access_token |
+| **期望结果** | 连接被拒绝，返回错误码 4003 |
+
+---
+
+### TC24: WebSocket 连接 - 成功
+
+| 编号 | TC024 |
+|-----|-------|
+| **场景** | 携带有效 Token 成功连接 |
+| **前置条件** | 用户已登录，获得有效 access_token |
+| **测试步骤** | 1. 连接 ws://host/api/v1/ws/chat<br>2. Header: Authorization: Bearer {token} |
+| **期望结果** | 连接成功，收到 connected 消息 |
+
+**期望响应**：
+```json
+{
+  "type": "connected",
+  "user_id": "507f1f77bcf86cd799439011",
+  "username": "testuser",
+  "session_id": "sess_xxx",
+  "timestamp": "2026-03-22T10:30:00Z"
+}
+```
+
+---
+
+### TC25: WebSocket 单连接 - 踢掉旧连接
+
+| 编号 | TC025 |
+|-----|-------|
+| **场景** | 同一用户建立新连接，旧连接被踢 |
+| **前置条件** | 用户 A 已有一个 WebSocket 连接 |
+| **测试步骤** | 1. 用户 A 在设备 2 建立新连接<br>2. 观察设备 1 的连接状态 |
+| **期望结果** | 设备 1 收到 kicked 消息后断开，设备 2 连接成功 |
+
+**设备 1 期望响应**：
+```json
+{
+  "type": "kicked",
+  "reason": "new_login",
+  "message": "您的账号在其他设备登录，当前连接已断开"
+}
+```
+
+---
+
+### TC26: WebSocket 心跳 - 正常响应
+
+| 编号 | TC026 |
+|-----|-------|
+| **场景** | 客户端正确响应心跳 |
+| **前置条件** | WebSocket 已连接 |
+| **测试步骤** | 1. 服务端发送 {"type": "ping"}<br>2. 客户端响应 {"type": "pong"} |
+| **期望结果** | 连接保持，无断开 |
+
+---
+
+### TC27: WebSocket 心跳 - 超时断开
+
+| 编号 | TC027 |
+|-----|-------|
+| **场景** | 客户端未响应心跳，连接被断开 |
+| **前置条件** | WebSocket 已连接 |
+| **测试步骤** | 1. 服务端发送 {"type": "ping"}<br>2. 客户端 60 秒内不响应 |
+| **期望结果** | 连接被服务端主动断开 |
+
+---
+
+### TC28: WebSocket 消息 - 聊天消息
+
+| 编号 | TC028 |
+|-----|-------|
+| **场景** | 发送聊天消息并接收响应 |
+| **前置条件** | WebSocket 已连接 |
+| **测试步骤** | 1. 发送聊天消息<br>2. 接收 AI 响应 |
+| **期望结果** | 收到 message 类型的响应 |
+
+**请求**：
+```json
+{
+  "type": "chat",
+  "content": "你好",
+  "conversation_id": "conv_001"
+}
+```
+
+**期望响应**（流式）：
+```json
+{
+  "type": "message",
+  "content": "你好！有什么可以帮助您的？",
+  "conversation_id": "conv_001",
+  "message_id": "msg_001",
+  "is_final": true,
+  "timestamp": "2026-03-22T10:30:00Z"
+}
+```
+
+---
+
+### TC29: WebSocket 消息 - 未知类型
+
+| 编号 | TC029 |
+|-----|-------|
+| **场景** | 发送未知类型的消息 |
+| **前置条件** | WebSocket 已连接 |
+| **测试步骤** | 1. 发送 {"type": "unknown"} |
+| **期望结果** | 收到错误消息 |
+
+**期望响应**：
+```json
+{
+  "type": "error",
+  "code": 6001,
+  "message": "Unknown message type: unknown"
+}
+```
+
+---
+
+### TC30: WebSocket 关闭 - 正常关闭
+
+| 编号 | TC030 |
+|-----|-------|
+| **场景** | 客户端主动关闭连接 |
+| **前置条件** | WebSocket 已连接 |
+| **测试步骤** | 1. 发送 {"type": "close"}<br>2. 连接关闭 |
+| **期望结果** | 连接正常关闭，服务端清理映射 |
+
+**数据库验证**：
+- session_to_user 映射被删除
+- user_to_ws 映射被删除
 
 ---
 
@@ -456,6 +651,21 @@ def test_login_response_time(client, test_user):
 |-----|------|
 | **响应时间** | < 50ms (P95) |
 | **测试方法** | 直接调用 get_current_user |
+
+### PT3: WebSocket 连接建立时间
+
+| 指标 | 要求 |
+|-----|------|
+| **响应时间** | < 200ms (P95) |
+| **并发** | 100 连接/秒 |
+| **测试方法** | 使用 websockets 库压测 |
+
+### PT4: WebSocket 消息延迟
+
+| 指标 | 要求 |
+|-----|------|
+| **响应时间** | < 100ms (P95) |
+| **测试方法** | 发送消息到接收响应的时间差 |
 
 ---
 
@@ -555,10 +765,25 @@ jobs:
 - [ ] POST /api/v1/auth/refresh - Token 过期
 - [ ] POST /api/v1/auth/refresh - Token 类型错误
 
+### WebSocket 测试
+
+- [ ] WebSocket 连接 - 无 Token
+- [ ] WebSocket 连接 - 无效 Token
+- [ ] WebSocket 连接 - 过期 Token
+- [ ] WebSocket 连接 - 成功
+- [ ] WebSocket 单连接 - 踢掉旧连接
+- [ ] WebSocket 心跳 - 正常响应
+- [ ] WebSocket 心跳 - 超时断开
+- [ ] WebSocket 消息 - 聊天消息
+- [ ] WebSocket 消息 - 未知类型
+- [ ] WebSocket 关闭 - 正常关闭
+
 ### 性能测试
 
 - [ ] 登录接口响应时间 < 500ms
 - [ ] Token 验证延迟 < 50ms
+- [ ] WebSocket 连接建立时间 < 200ms
+- [ ] WebSocket 消息延迟 < 100ms
 
 ### 覆盖率目标
 

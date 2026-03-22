@@ -33,9 +33,8 @@ AIWorkHelper 是一款专为企业办公场景打造的 AI 智能助手系统。
 - [x] 配置管理（环境变量 + Pydantic Settings）
 - [x] 全局异常处理
 - [x] 请求日志中间件
-- [x] WebSocket 基础配置
 
-#### 用户认证
+#### 用户认证（HTTP）
 - [x] 用户注册（用户名 + 邮箱 + 密码）
 - [x] 用户登录（支持用户名或邮箱登录）
 - [x] JWT Access Token 生成（有效期 7 天）
@@ -45,9 +44,17 @@ AIWorkHelper 是一款专为企业办公场景打造的 AI 智能助手系统。
 - [x] 密码哈希存储（bcrypt）
 - [x] 基础字段校验
 
+#### 用户认证（WebSocket）
+- [x] WebSocket 连接认证（Header 传递 JWT Token）
+- [x] Session 管理（sessionId → userId 映射）
+- [x] 单连接限制（新连接踢掉旧连接）
+- [x] 服务端心跳检测（30 秒间隔）
+- [x] JSON 消息格式
+- [x] 连接状态广播
+
 ### Out of Scope
 
-#### 本期不做的功能
+#### 本期不做的功能（HTTP 认证）
 - [ ] 手机号 + 验证码登录
 - [ ] 第三方 OAuth 登录（钉钉/企业微信）
 - [ ] RBAC 权限控制（角色管理、权限校验）
@@ -57,6 +64,13 @@ AIWorkHelper 是一款专为企业办公场景打造的 AI 智能助手系统。
 - [ ] 用户信息修改
 - [ ] 密码重置（忘记密码）
 - [ ] 邮箱验证流程
+
+#### 本期不做的功能（WebSocket）
+- [ ] 多实例部署（跨实例通信需要 Redis Pub/Sub）
+- [ ] 二进制消息格式（Protobuf）
+- [ ] WebSocket 消息持久化
+- [ ] 消息重试机制
+- [ ] 离线消息推送
 
 #### AI 功能（后续模块）
 - [ ] LangChain Agent 实现
@@ -98,9 +112,13 @@ POST /api/v1/auth/register
 
 # 期望响应 201
 {
-  "user_id": "507f1f77bcf86cd799439011",
-  "username": "testuser",
-  "email": "test@example.com"
+  "code": 200,
+  "message": "success",
+  "data": {
+    "user_id": "507f1f77bcf86cd799439011",
+    "username": "testuser",
+    "email": "test@example.com"
+  }
 }
 ```
 
@@ -115,14 +133,18 @@ POST /api/v1/auth/login
 
 # 期望响应 200
 {
-  "access_token": "eyJhbGci...",
-  "refresh_token": "eyJhbGci...",
-  "token_type": "bearer",
-  "expires_in": 604800,
-  "user": {
-    "user_id": "...",
-    "username": "testuser",
-    "email": "test@example.com"
+  "code": 200,
+  "message": "success",
+  "data": {
+    "access_token": "eyJhbGci...",
+    "refresh_token": "eyJhbGci...",
+    "token_type": "bearer",
+    "expires_in": 604800,
+    "user": {
+      "user_id": "...",
+      "username": "testuser",
+      "email": "test@example.com"
+    }
   }
 }
 ```
@@ -133,7 +155,9 @@ POST /api/v1/auth/login
 GET /api/v1/auth/me
 # 期望响应 401
 {
-  "detail": "Not authenticated"
+  "code": 401,
+  "message": "Not authenticated",
+  "data": null
 }
 
 # 带 Token 访问
@@ -165,7 +189,9 @@ POST /api/v1/auth/register
 
 # 期望响应 400
 {
-  "detail": "Username already exists"
+  "code": 400,
+  "message": "Username already exists",
+  "data": null
 }
 ```
 
@@ -186,7 +212,9 @@ POST /api/v1/auth/register
 
 # 期望响应 422
 {
-  "detail": "Password must be at least 8 characters"
+  "code": 400,
+  "message": "Password must be at least 8 characters",
+  "data": null
 }
 ```
 
@@ -195,22 +223,74 @@ POST /api/v1/auth/register
 - 访问 http://localhost:8000/redoc 显示 ReDoc
 - 所有接口包含完整的 Request/Response 示例
 
+### AC12: WebSocket 连接认证
+```bash
+# 无 Token 连接 WebSocket
+ws://localhost:8000/api/v1/ws/chat
+# 期望响应：连接被拒绝，返回 4001 错误码
+
+# 带有效 Token 连接
+ws://localhost:8000/api/v1/ws/chat
+Header: Authorization: Bearer eyJhbGci...
+# 期望响应：连接成功，返回 {"type": "connected", "user_id": "..."}
+```
+
+### AC13: WebSocket 单连接限制
+```bash
+# 用户 A 在设备 1 建立连接
+ws://localhost:8000/api/v1/ws/chat (Token: user_A)
+# 连接成功
+
+# 用户 A 在设备 2 建立连接（同一 Token）
+ws://localhost:8000/api/v1/ws/chat (Token: user_A)
+# 设备 1 的连接被断开，返回 {"type": "kicked", "reason": "new_login"}
+# 设备 2 连接成功
+```
+
+### AC14: WebSocket 心跳检测
+- 服务端每 30 秒发送心跳检测：`{"type": "ping"}`
+- 客户端需在 60 秒内响应：`{"type": "pong"}`
+- 超时未响应则断开连接
+
+### AC15: WebSocket 消息格式
+```json
+// 客户端发送消息
+{
+  "type": "chat",
+  "content": "你好，请帮我写一份周报",
+  "conversation_id": "conv_001"
+}
+
+// 服务端响应
+{
+  "type": "message",
+  "content": "好的，我来帮您...",
+  "conversation_id": "conv_001",
+  "timestamp": "2026-03-22T10:30:00Z"
+}
+```
+
 ## Constraints (约束)
 
 ### 性能要求
 - 登录接口响应时间 < 500ms
 - Token 验证中间件延迟 < 50ms
+- WebSocket 连接建立时间 < 200ms
+- WebSocket 消息延迟 < 100ms
 
 ### 安全要求
 - 密码最小长度 8 位，必须包含字母和数字
 - JWT 使用 HS256 算法签名
 - 密码哈希使用 bcrypt，work factor = 12
 - 敏感信息（密码、Token）不在日志中输出
+- WebSocket 连接必须携带有效 JWT Token
+- WebSocket 心跳超时断开连接，防止僵尸连接
 
 ### 兼容性要求
 - Python 版本：>= 3.11
 - MongoDB 版本：>= 6.0
 - Redis 版本：>= 7.0（支持 RediSearch）
+- WebSocket 协议：RFC 6455
 
 ### 配置要求
 - 所有配置通过环境变量管理
@@ -227,6 +307,8 @@ POST /api/v1/auth/register
 | Redis 不可用影响后续功能 | 中 | 记录警告日志，降级为非缓存模式 |
 | JWT 密钥泄露导致安全漏洞 | 高 | 密钥从环境变量读取，定期轮换 |
 | bcrypt 性能开销 | 低 | work factor 设为 12 平衡安全与性能 |
+| WebSocket 僵尸连接占用资源 | 中 | 服务端心跳检测，超时断开 |
+| WebSocket 单连接被恶意踢下线 | 中 | 记录日志，可选的 IP 绑定 |
 
 ### 数据迁移
 - 本期为新系统，无需数据迁移
@@ -262,6 +344,9 @@ python-dotenv>=1.0.0
 - [ ] 用户注册流程完整可用
 - [ ] 用户登录流程完整可用
 - [ ] Token 认证保护有效
+- [ ] WebSocket 连接认证有效
+- [ ] WebSocket 单连接限制生效
+- [ ] WebSocket 心跳检测正常
 - [ ] 所有单元测试通过
 - [ ] 代码通过类型检查 (mypy)
 - [ ] SDD 文档完整归档

@@ -22,12 +22,14 @@ aiworkhelper/
 │   │   └── v1/
 │   │       ├── __init__.py
 │   │       ├── auth.py                # 认证路由
+│   │       ├── ws.py                  # WebSocket 路由
 │   │       └── router.py              # 路由聚合
 │   │
 │   ├── service/
 │   │   ├── __init__.py
 │   │   ├── auth_service.py            # 认证业务逻辑
-│   │   └── user_service.py            # 用户业务逻辑
+│   │   ├── user_service.py            # 用户业务逻辑
+│   │   └── ws_manager.py              # WebSocket 连接管理器
 │   │
 │   ├── repository/
 │   │   ├── __init__.py
@@ -44,6 +46,10 @@ aiworkhelper/
 │   │   │   ├── register.py            # 注册 DTO
 │   │   │   ├── login.py               # 登录 DTO
 │   │   │   └── token.py               # Token DTO
+│   │   ├── ws/
+│   │   │   ├── __init__.py
+│   │   │   ├── message.py             # WebSocket 消息 DTO
+│   │   │   └── response.py            # WebSocket 响应 DTO
 │   │   ├── user/
 │   │   │   ├── __init__.py
 │   │   │   └── user_response.py       # 用户响应 DTO
@@ -72,7 +78,8 @@ aiworkhelper/
 │   ├── __init__.py
 │   ├── conftest.py                    # pytest 配置
 │   └── api/
-│       └── test_auth.py               # 认证接口测试
+│       ├── test_auth.py               # 认证接口测试
+│       └── test_ws.py                 # WebSocket 测试
 │
 ├── .env.example                       # 环境变量模板
 ├── .gitignore
@@ -251,6 +258,143 @@ db.users.createIndex({ status: 1 })
 │     ↓                                                           │
 │  9. 返回新 Token                                                │
 │     return RefreshResponse(new_access_token)                    │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 5. WebSocket 连接认证流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  WebSocket 连接认证                                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. 客户端发起 WebSocket 连接                                    │
+│     ws://host/api/v1/ws/chat                                    │
+│     Header: Authorization: Bearer {access_token}               │
+│     ↓                                                           │
+│  2. 从 Header 提取 Token                                        │
+│     token = extract_bearer_token(authorization_header)          │
+│     ↓                                                           │
+│  3. 验证 Token                                                  │
+│     payload = decode_jwt(token)                                 │
+│     if invalid: close connection with code 4002                 │
+│     if expired: close connection with code 4003                 │
+│     ↓                                                           │
+│  4. 提取用户信息                                                │
+│     user_id = payload["sub"]                                    │
+│     user = user_repository.find_by_id(user_id)                  │
+│     if not user: close connection with code 4004               │
+│     ↓                                                           │
+│  5. 检查是否已有连接（单连接限制）                               │
+│     if user_id in active_connections:                           │
+│         old_ws = active_connections[user_id]                    │
+│         await old_ws.send_json({"type": "kicked", ...})        │
+│         await old_ws.close()                                    │
+│     ↓                                                           │
+│  6. 建立映射                                                    │
+│     session_id = generate_session_id()                          │
+│     session_to_user[session_id] = user_id                       │
+│     user_to_ws[user_id] = websocket                             │
+│     ws_to_session[websocket] = session_id                       │
+│     ↓                                                           │
+│  7. 发送连接成功消息                                            │
+│     await websocket.send_json({                                 │
+│         "type": "connected",                                    │
+│         "user_id": user_id,                                     │
+│         "username": user.username,                              │
+│         "session_id": session_id                                │
+│     })                                                          │
+│     ↓                                                           │
+│  8. 启动心跳检测任务                                            │
+│     start_heartbeat_task(websocket, session_id)                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 6. WebSocket 消息处理流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  WebSocket 消息处理                                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. 接收消息                                                    │
+│     message = await websocket.receive_json()                    │
+│     ↓                                                           │
+│  2. 解析消息类型                                                │
+│     msg_type = message.get("type")                              │
+│     ↓                                                           │
+│  3. 根据类型分发处理                                            │
+│     switch msg_type:                                            │
+│       case "chat":    → handle_chat_message()                   │
+│       case "pong":    → handle_pong()                           │
+│       case "close":   → handle_close()                          │
+│       default:        → send_error("unknown message type")      │
+│     ↓                                                           │
+│  4. 聊天消息处理                                                │
+│     - 获取用户 ID（从 session_to_user）                         │
+│     - 调用 AI 服务处理消息                                      │
+│     - 流式返回响应                                              │
+│     ↓                                                           │
+│  5. 心跳响应处理                                                │
+│     - 更新最后活跃时间                                          │
+│     - 重置心跳超时计时器                                        │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 7. WebSocket 心跳检测流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  WebSocket 心跳检测                                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. 服务端定时任务（每 30 秒）                                   │
+│     for each active_websocket:                                  │
+│         await websocket.send_json({"type": "ping"})            │
+│         last_ping_time[session_id] = now()                     │
+│     ↓                                                           │
+│  2. 检测超时（每 60 秒）                                        │
+│     for each session in last_ping_time:                         │
+│         if now() - last_ping_time[session] > 60s:              │
+│             await close_connection(session)                    │
+│             cleanup_session(session)                            │
+│     ↓                                                           │
+│  3. 客户端响应                                                  │
+│     收到 {"type": "ping"} 后                                    │
+│     发送 {"type": "pong"}                                       │
+│     ↓                                                           │
+│  4. 更新活跃时间                                                │
+│     last_pong_time[session_id] = now()                          │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 8. WebSocket 连接关闭流程
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  WebSocket 连接关闭                                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. 检测关闭事件                                                │
+│     - 客户端主动关闭                                            │
+│     - 心跳超时                                                  │
+│     - 服务端异常                                                │
+│     ↓                                                           │
+│  2. 获取 Session ID                                             │
+│     session_id = ws_to_session[websocket]                       │
+│     ↓                                                           │
+│  3. 清理映射                                                    │
+│     user_id = session_to_user.pop(session_id)                   │
+│     user_to_ws.pop(user_id, None)                               │
+│     ws_to_session.pop(websocket, None)                          │
+│     last_ping_time.pop(session_id, None)                        │
+│     ↓                                                           │
+│  4. 记录日志                                                    │
+│     logger.info(f"WebSocket closed: user={user_id}, ...")      │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -470,6 +614,92 @@ is_valid = bcrypt.verify(password, password_hash)
 
 ---
 
+### Step 12: WebSocket 连接管理器
+
+**任务**：
+- 实现 WebSocketConnectionManager 类
+- 实现连接注册、注销
+- 实现单连接限制（踢掉旧连接）
+- 实现心跳检测
+- 实现消息广播
+
+**文件**：
+- `app/service/ws_manager.py`
+
+**核心类设计**：
+```python
+class WebSocketConnectionManager:
+    """WebSocket 连接管理器"""
+
+    # 映射关系
+    _session_to_user: Dict[str, str]      # session_id → user_id
+    _user_to_ws: Dict[str, WebSocket]      # user_id → websocket
+    _ws_to_session: Dict[WebSocket, str]   # websocket → session_id
+
+    # 心跳相关
+    _last_ping_time: Dict[str, datetime]   # session_id → last_ping_time
+    _heartbeat_task: Optional[asyncio.Task]
+
+    async def connect(websocket: WebSocket, token: str) -> str:
+        """建立连接，返回 session_id"""
+
+    async def disconnect(websocket: WebSocket):
+        """断开连接，清理映射"""
+
+    async def kick_user(user_id: str, reason: str):
+        """踢掉用户现有连接"""
+
+    async def send_to_user(user_id: str, message: dict):
+        """向指定用户发送消息"""
+
+    async def start_heartbeat():
+        """启动心跳检测任务"""
+
+    async def handle_pong(session_id: str):
+        """处理心跳响应"""
+```
+
+---
+
+### Step 13: WebSocket 路由
+
+**任务**：
+- 实现 WebSocket 端点
+- 实现 Token 认证
+- 实现消息分发
+
+**文件**：
+- `app/api/v1/ws.py`
+
+---
+
+### Step 14: WebSocket DTO
+
+**任务**：
+- 定义消息类型枚举
+- 定义请求消息 DTO
+- 定义响应消息 DTO
+
+**文件**：
+- `app/dto/ws/__init__.py`
+- `app/dto/ws/message.py`
+- `app/dto/ws/response.py`
+
+---
+
+### Step 15: WebSocket 测试
+
+**任务**：
+- WebSocket 连接认证测试
+- 单连接限制测试
+- 心跳检测测试
+- 消息处理测试
+
+**文件**：
+- `tests/api/test_ws.py`
+
+---
+
 ## Rollback & Compatibility (回滚与兼容)
 
 ### 回滚方案
@@ -520,6 +750,11 @@ REFRESH_TOKEN_EXPIRE_DAYS=30
 
 # CORS
 CORS_ORIGINS=["http://localhost:3000"]
+
+# WebSocket 配置
+WS_HEARTBEAT_INTERVAL=30        # 心跳间隔（秒）
+WS_HEARTBEAT_TIMEOUT=60         # 心跳超时（秒）
+WS_MAX_MESSAGE_SIZE=1048576     # 最大消息大小（字节，默认 1MB）
 ```
 
 ---

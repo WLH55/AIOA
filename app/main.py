@@ -6,12 +6,16 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from motor.motor_asyncio import AsyncIOMotorClient
+from beanie import init_beanie
+import redis.asyncio as redis
 
 from app.config import settings, setup_logging
 from app.config.exceptions import register_exception_handlers
+from app.models.user import User
 
 # 导入路由
-from app.routers import example
+from app.routers import auth_router, example
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +31,34 @@ async def lifespan(app: FastAPI):
     logger.info(f"运行环境: {settings.ENVIRONMENT}")
     logger.info(f"调试模式: {settings.DEBUG}")
 
+    # 初始化 MongoDB
+    try:
+        motor_client = AsyncIOMotorClient(settings.MONGODB_URI)
+        await init_beanie(
+            database=motor_client[settings.MONGODB_DATABASE],
+            document_models=[User],
+        )
+        logger.info(f"MongoDB 连接成功: {settings.MONGODB_DATABASE}")
+    except Exception as e:
+        logger.error(f"MongoDB 连接失败: {e}")
+        raise
+
+    # 初始化 Redis
+    try:
+        redis_client = redis.from_url(settings.REDIS_URI)
+        await redis_client.ping()
+        logger.info("Redis 连接成功")
+        # 存储 redis 客户端到 app state
+        app.state.redis = redis_client
+    except Exception as e:
+        logger.warning(f"Redis 连接失败: {e}，部分功能可能不可用")
+        app.state.redis = None
+
     yield
 
     # 关闭时执行
+    if app.state.redis:
+        await app.state.redis.close()
     logger.info("应用关闭")
 
 
@@ -70,6 +99,7 @@ def create_app() -> FastAPI:
     register_exception_handlers(app)
 
     # ========== 注册路由 ==========
+    app.include_router(auth_router, prefix=settings.API_PREFIX)
     app.include_router(example.router, prefix=settings.API_PREFIX)
 
     # ========== 健康检查 ==========

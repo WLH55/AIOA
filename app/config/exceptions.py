@@ -105,7 +105,25 @@ async def validation_exception_handler(
     )
 
 
+async def not_found_exception_handler(
+    request: Request,
+    exc: ResourceNotFoundException
+) -> JSONResponse:
+    """处理资源未找到异常"""
+    _log_exception(request, exc, level="WARNING")
+
+    return JSONResponse(
+        status_code=status.HTTP_404_NOT_FOUND,
+        content=ApiResponse.error(
+            code=ResponseCode.NOT_FOUND,
+            message=exc.message or "资源不存在",
+            data=None
+        ).model_dump()
+    )
+
+
 def register_exception_handlers(app) -> None:
     """注册全局异常处理器到 FastAPI 应用"""
     app.add_exception_handler(BusinessValidationException, validation_exception_handler)
+    app.add_exception_handler(ResourceNotFoundException, not_found_exception_handler)
     app.add_exception_handler(Exception, general_exception_handler)

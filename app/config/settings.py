@@ -59,8 +59,15 @@ class Settings(BaseSettings):
     LOGS_DIR: Path = _BASE_PATH / "storage" / "logs"
     LOG_RETENTION_DAYS: int = 30
 
-    # ========== 数据库配置（可选） ==========
-    DATABASE_URL: str = ""
+    # ========== 数据库配置 ==========
+    MONGODB_URI: str = "mongodb://localhost:27017"
+    MONGODB_DATABASE: str = "aiworkhelper"
+    REDIS_URI: str = "redis://localhost:6379/0"
+
+    # ========== JWT 配置 ==========
+    SECRET_KEY: str = "your-secret-key-change-this-in-production"
+    ACCESS_TOKEN_EXPIRE_DAYS: int = 7
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
     # ========== 其他配置 ==========
 
