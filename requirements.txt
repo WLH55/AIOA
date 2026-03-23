@@ -22,3 +22,11 @@ python-jose[cryptography]>=3.3.0
 
 # 密码哈希
 passlib[bcrypt]>=1.7.4
+bcrypt>=4.0.0,<5.0.0
+
+# 测试依赖
+pytest>=8.0.0
+pytest-asyncio>=0.24.0
+pytest-mock>=3.14.0
+httpx>=0.28.0
+pytest-cov>=6.0.0

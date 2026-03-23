@@ -86,6 +86,17 @@
 ```markdown
 # Implementation: [功能名称]
 
+## Execution Status (执行状态)
+
+| 字段 | 值 |
+|------|-----|
+| **Phase** | Execute |
+| **Progress** | 0/N steps (0%) |
+| **Current Task** | Step 1 - [任务名称] |
+| **Last Updated** | YYYY-MM-DD HH:MM |
+
+---
+
 ## Objective (目标复述)
 用 3-5 行复述本次要实现什么。
 
@@ -112,14 +123,57 @@
 - 异常处理：
 
 ## Execution Plan (分步计划)
-- Step 1: [任务描述]
-- Step 2: [任务描述]
+
+> **状态图例**：✅ 完成 | 🔄 进行中 | ⏳ 待开始 | ❌ 阻塞
+
+---
+
+### Step 1: [任务名称] ⏳
+
+**任务清单**：
+- [ ] 子任务 1
+- [ ] 子任务 2
+- [ ] 子任务 3
+
+**产出文件**：
+- `path/to/file1.py`
+- `path/to/file2.py`
+
+---
+
+### Step 2: [任务名称] ⏳
+
+**任务清单**：
+- [ ] 子任务 1
+- [ ] 子任务 2
+
+**产出文件**：
+- `path/to/file.py`
+
+---
+
+### Step 3: [任务名称] ⏳
+
+**任务清单**：
+- [ ] 子任务 1
+- [ ] 子任务 2
+
+**产出文件**：
+- `path/to/file.py`
+
+---
 
 ## Rollback & Compatibility (回滚与兼容)
 - 如何关闭：
 - 如何回退：
 - 影响面：
 ```
+
+> **使用说明**：
+> 1. 开始执行时，更新顶部 `Execution Status` 表格
+> 2. 每完成一个子任务，将 `[ ]` 改为 `[x]`
+> 3. Step 状态随子任务进度更新：⏳ → 🔄 → ✅
+> 4. 新 AI 接手时，读取 `Execution Status` 快速定位断点
 
 ---
 

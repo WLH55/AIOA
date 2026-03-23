@@ -166,16 +166,16 @@
 | Step 3 | 数据模型 | ✅ 已完成 | `app/models/user.py` |
 | Step 4 | 数据访问层 | ✅ 已完成 | `app/repository/user_repository.py` |
 | Step 5 | 安全模块 | ✅ 已完成 | `app/security/` (jwt, password, dependencies) |
-| Step 6 | DTO 定义 | ✅ 已完成 | `app/dto/` (auth, user) |
+| Step 6 | DTO 定义 | ✅ 已完成 | `app/dto/` (auth, user, ws) |
 | Step 7 | 业务逻辑层 | ✅ 已完成 | `app/services/auth_service.py` |
 | Step 8 | API 路由层 | ✅ 已完成 | `app/routers/auth.py` |
 | Step 9 | 中间件 | ✅ 已完成 | 更新了 ResourceNotFoundException 处理 |
-| Step 10 | 应用入口 | ✅ 已完成 | `app/main.py` - 初始化 Beanie/Redis |
-| Step 11 | 测试 | ❌ 待实现 | `tests/` |
-| Step 12 | WebSocket 连接管理器 | ❌ 待实现 | `app/services/ws_manager.py` |
-| Step 13 | WebSocket 路由 | ❌ 待实现 | `app/routers/ws.py` |
-| Step 14 | WebSocket DTO | ❌ 待实现 | `app/dto/ws/` |
-| Step 15 | WebSocket 测试 | ❌ 待实现 | `tests/api/test_ws.py` |
+| Step 10 | 应用入口 | ✅ 已完成 | `app/main.py` - 初始化 Beanie/Redis/心跳检测 |
+| Step 11 | HTTP 测试 | ✅ 已完成 | `tests/` - 55 个测试用例全部通过 |
+| Step 12 | WebSocket 连接管理器 | ✅ 已完成 | `app/services/ws_manager.py` |
+| Step 13 | WebSocket 路由 | ✅ 已完成 | `app/routers/ws.py` |
+| Step 14 | WebSocket DTO | ✅ 已完成 | `app/dto/ws/` |
+| Step 15 | WebSocket 测试 | ✅ 已完成 | `tests/api/test_ws.py` - 23 个测试用例 |
 
 **已实现的 API 端点**:
 - `POST /api/v1/auth/register` - 用户注册
@@ -183,8 +183,23 @@
 - `POST /api/v1/auth/refresh` - Token 刷新
 - `POST /api/v1/auth/logout` - 用户登出
 - `GET /api/v1/auth/me` - 获取当前用户信息
+- `WS /api/v1/ws/chat` - WebSocket 聊天
 
-**下一步**: 实现 WebSocket 模块 (Step 12-15)
+**已实现的测试**:
+- `tests/unit/test_password.py` - 密码哈希和验证测试 (11 用例)
+- `tests/unit/test_jwt.py` - JWT 编解码测试 (21 用例)
+- `tests/api/test_auth.py` - 认证接口集成测试 (23 用例)
+- `tests/api/test_ws.py` - WebSocket 测试 (23 用例)
+- **总计**: 78 个测试用例全部通过
+
+**WebSocket 功能**:
+- 连接注册与注销
+- 单用户单连接限制（踢掉旧连接）
+- 心跳检测（30s 间隔，60s 超时）
+- 消息广播
+- Token 认证
+
+**实施完成**: 2026-03-23
 
 ---
 

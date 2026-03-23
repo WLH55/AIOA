@@ -15,7 +15,8 @@ from app.config.exceptions import register_exception_handlers
 from app.models.user import User
 
 # 导入路由
-from app.routers import auth_router, example
+from app.routers import auth_router, example, ws_router
+from app.services.ws_manager import ws_manager
 
 logger = logging.getLogger(__name__)
 
@@ -54,9 +55,17 @@ async def lifespan(app: FastAPI):
         logger.warning(f"Redis 连接失败: {e}，部分功能可能不可用")
         app.state.redis = None
 
+    # 启动 WebSocket 心跳检测
+    await ws_manager.start_heartbeat()
+    logger.info("WebSocket 心跳检测已启动")
+
     yield
 
     # 关闭时执行
+    # 停止心跳检测
+    await ws_manager.stop_heartbeat()
+    logger.info("WebSocket 心跳检测已停止")
+
     if app.state.redis:
         await app.state.redis.close()
     logger.info("应用关闭")
@@ -101,6 +110,7 @@ def create_app() -> FastAPI:
     # ========== 注册路由 ==========
     app.include_router(auth_router, prefix=settings.API_PREFIX)
     app.include_router(example.router, prefix=settings.API_PREFIX)
+    app.include_router(ws_router, prefix=settings.API_PREFIX)
 
     # ========== 健康检查 ==========
     @app.get("/health")
