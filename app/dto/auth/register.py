@@ -4,7 +4,6 @@
 定义注册接口的请求和响应数据结构
 """
 import re
-from typing import Optional
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -13,27 +12,16 @@ class RegisterRequest(BaseModel):
     用户注册请求 DTO
 
     Attributes:
-        username: 用户名（3-50字符，字母数字下划线）
-        email: 邮箱地址
+        name: 用户名（3-50字符，字母数字下划线）
         password: 密码（最小8位，必须包含字母和数字）
-        full_name: 真实姓名
-        department: 部门
-        position: 职位
-        employee_id: 工号
-        phone: 手机号
     """
 
-    username: str = Field(
+    name: str = Field(
         ...,
         min_length=3,
         max_length=50,
         description="用户名",
         examples=["zhangsan"]
-    )
-    email: str = Field(
-        ...,
-        description="邮箱地址",
-        examples=["zhangsan@company.com"]
     )
     password: str = Field(
         ...,
@@ -41,40 +29,10 @@ class RegisterRequest(BaseModel):
         description="密码（最小8位，必须包含字母和数字）",
         examples=["Password123"]
     )
-    full_name: Optional[str] = Field(
-        None,
-        max_length=100,
-        description="真实姓名",
-        examples=["张三"]
-    )
-    department: Optional[str] = Field(
-        None,
-        max_length=50,
-        description="部门",
-        examples=["技术部"]
-    )
-    position: Optional[str] = Field(
-        None,
-        max_length=50,
-        description="职位",
-        examples=["后端工程师"]
-    )
-    employee_id: Optional[str] = Field(
-        None,
-        max_length=50,
-        description="工号",
-        examples=["E001"]
-    )
-    phone: Optional[str] = Field(
-        None,
-        max_length=20,
-        description="手机号",
-        examples=["13800138000"]
-    )
 
-    @field_validator("username")
+    @field_validator("name")
     @classmethod
-    def validate_username(cls, v: str) -> str:
+    def validate_name(cls, v: str) -> str:
         """
         验证用户名格式
 
@@ -105,10 +63,8 @@ class RegisterResponse(BaseModel):
 
     Attributes:
         user_id: 用户 ID
-        username: 用户名
-        email: 邮箱地址
+        name: 用户名
     """
 
     user_id: str = Field(..., description="用户 ID")
-    username: str = Field(..., description="用户名")
-    email: str = Field(..., description="邮箱地址")
+    name: str = Field(..., description="用户名")

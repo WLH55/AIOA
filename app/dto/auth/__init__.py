@@ -2,7 +2,7 @@
 认证 DTO 模块
 """
 from app.dto.auth.register import RegisterRequest, RegisterResponse
-from app.dto.auth.login import LoginRequest, LoginResponse
+from app.dto.auth.login import LoginRequest, LoginResponse, UserInfo
 from app.dto.auth.token import TokenRefreshRequest, TokenRefreshResponse
 
 __all__ = [
@@ -10,6 +10,7 @@ __all__ = [
     "RegisterResponse",
     "LoginRequest",
     "LoginResponse",
+    "UserInfo",
     "TokenRefreshRequest",
     "TokenRefreshResponse",
 ]

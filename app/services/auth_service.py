@@ -34,9 +34,8 @@ class AuthService:
 
         流程：
         1. 检查用户名是否已存在
-        2. 检查邮箱是否已存在
-        3. 创建用户记录
-        4. 返回用户信息
+        2. 创建用户记录
+        3. 返回用户信息
 
         Args:
             request: 注册请求 DTO
@@ -45,37 +44,28 @@ class AuthService:
             注册响应 DTO
 
         Raises:
-            BusinessValidationException: 用户名或邮箱已存在
+            BusinessValidationException: 用户名已存在
         """
         # 检查用户名是否已存在
-        if await UserRepository.exists_by_username(request.username):
+        if await UserRepository.exists_by_name(request.name):
             raise BusinessValidationException("Username already exists")
-
-        # 检查邮箱是否已存在
-        if await UserRepository.exists_by_email(request.email):
-            raise BusinessValidationException("Email already exists")
 
         # 创建用户
         user = User(
-            username=request.username,
-            email=request.email,
-            password_hash=hash_password(request.password),
-            full_name=request.full_name,
-            department=request.department,
-            position=request.position,
-            employee_id=request.employee_id,
-            phone=request.phone,
+            name=request.name,
+            password=hash_password(request.password),
+            status=0,
+            isAdmin=False,
         )
 
         # 保存用户
         user = await UserRepository.create(user)
 
-        logger.info(f"用户注册成功: {user.username}")
+        logger.info(f"用户注册成功: {user.name}")
 
         return RegisterResponse(
             user_id=str(user.id),
-            username=user.username,
-            email=user.email,
+            name=user.name,
         )
 
     @staticmethod
@@ -84,10 +74,10 @@ class AuthService:
         用户登录
 
         流程：
-        1. 根据用户名或邮箱查找用户
+        1. 根据用户名查找用户
         2. 验证用户存在且状态正常
         3. 验证密码
-        4. 更新最后登录时间
+        4. 更新时间戳
         5. 生成 Token
         6. 返回登录响应
 
@@ -100,36 +90,33 @@ class AuthService:
         Raises:
             BusinessValidationException: 用户名/密码错误或用户被禁用
         """
-        # 获取标识符（用户名或邮箱）
-        identifier = request.username or request.email
-
         # 查找用户
-        user = await UserRepository.find_by_username_or_email(identifier)
+        user = await UserRepository.find_by_name(request.name)
 
         # 验证用户存在（使用统一错误消息防止用户名枚举）
         if not user:
-            logger.warning(f"登录失败: 用户不存在 ({identifier})")
+            logger.warning(f"登录失败: 用户不存在 ({request.name})")
             raise BusinessValidationException("Invalid username or password")
 
-        # 验证用户状态
-        if user.status != "active":
-            logger.warning(f"登录失败: 用户被禁用 ({user.username})")
+        # 验证用户状态（0-正常，1-禁用）
+        if user.status != 0:
+            logger.warning(f"登录失败: 用户被禁用 ({user.name})")
             raise BusinessValidationException("User is inactive or suspended")
 
         # 验证密码
-        if not verify_password(request.password, user.password_hash):
-            logger.warning(f"登录失败: 密码错误 ({user.username})")
+        if not verify_password(request.password, user.password):
+            logger.warning(f"登录失败: 密码错误 ({user.name})")
             raise BusinessValidationException("Invalid username or password")
 
-        # 更新最后登录时间
-        user.update_login_time()
+        # 更新时间戳
+        user.update_timestamp()
         await UserRepository.update(user)
 
         # 生成 Token
-        access_token = create_access_token(str(user.id), user.username)
+        access_token = create_access_token(str(user.id), user.name)
         refresh_token = create_refresh_token(str(user.id))
 
-        logger.info(f"用户登录成功: {user.username}")
+        logger.info(f"用户登录成功: {user.name}")
 
         return LoginResponse(
             access_token=access_token,
@@ -138,10 +125,9 @@ class AuthService:
             expires_in=settings.ACCESS_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
             user=UserInfo(
                 user_id=str(user.id),
-                username=user.username,
-                email=user.email,
-                full_name=user.full_name,
-                roles=user.roles,
+                name=user.name,
+                status=user.status,
+                is_admin=user.isAdmin,
             ),
         )
 
@@ -187,14 +173,14 @@ class AuthService:
         if not user:
             raise BusinessValidationException("User not found")
 
-        # 验证用户状态
-        if user.status != "active":
+        # 验证用户状态（0-正常）
+        if user.status != 0:
             raise BusinessValidationException("User is inactive or suspended")
 
         # 生成新的 Access Token
-        access_token = create_access_token(str(user.id), user.username)
+        access_token = create_access_token(str(user.id), user.name)
 
-        logger.info(f"Token 刷新成功: {user.username}")
+        logger.info(f"Token 刷新成功: {user.name}")
 
         return TokenRefreshResponse(
             access_token=access_token,

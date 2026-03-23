@@ -8,7 +8,6 @@ import logging
 from fastapi import APIRouter, Depends, status
 
 from app.config.schemas import ApiResponse
-from app.config.exceptions import BusinessValidationException, ResourceNotFoundException
 from app.models.user import User
 from app.security.dependencies import get_current_user
 from app.services.auth_service import AuthService
@@ -27,20 +26,14 @@ router = APIRouter(prefix="/auth", tags=["认证"])
     response_model=ApiResponse[RegisterResponse],
     status_code=status.HTTP_201_CREATED,
     summary="用户注册",
-    description="使用用户名、邮箱和密码注册新用户",
+    description="使用用户名和密码注册新用户",
 )
 async def register(request: RegisterRequest) -> ApiResponse[RegisterResponse]:
     """
     用户注册接口
 
-    - **username**: 用户名（3-50字符，字母数字下划线）
-    - **email**: 邮箱地址
+    - **name**: 用户名（3-50字符，字母数字下划线）
     - **password**: 密码（最小8位，必须包含字母和数字）
-    - **full_name**: 真实姓名（可选）
-    - **department**: 部门（可选）
-    - **position**: 职位（可选）
-    - **employee_id**: 工号（可选）
-    - **phone**: 手机号（可选）
     """
     response = await AuthService.register(request)
     return ApiResponse.success(data=response, message="注册成功")
@@ -50,14 +43,13 @@ async def register(request: RegisterRequest) -> ApiResponse[RegisterResponse]:
     "/login",
     response_model=ApiResponse[LoginResponse],
     summary="用户登录",
-    description="使用用户名/邮箱和密码登录，返回 JWT Token",
+    description="使用用户名和密码登录，返回 JWT Token",
 )
 async def login(request: LoginRequest) -> ApiResponse[LoginResponse]:
     """
     用户登录接口
 
-    - **username**: 用户名（与 email 二选一）
-    - **email**: 邮箱地址（与 username 二选一）
+    - **name**: 用户名
     - **password**: 密码
     """
     response = await AuthService.login(request)
@@ -92,7 +84,7 @@ async def logout(current_user: User = Depends(get_current_user)) -> ApiResponse[
 
     需要携带有效的 Bearer Token
     """
-    logger.info(f"用户登出: {current_user.username}")
+    logger.info(f"用户登出: {current_user.name}")
     return ApiResponse.success(data={"message": "Logged out successfully"})
 
 

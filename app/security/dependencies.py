@@ -8,7 +8,6 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from starlette.requests import Request
 
 from app.models.user import User
 from app.repository.user_repository import UserRepository
@@ -92,8 +91,8 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 验证用户状态
-    if user.status != "active":
+    # 验证用户状态（0-正常，1-禁用）
+    if user.status != 0:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="User is inactive or suspended",

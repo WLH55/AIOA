@@ -6,7 +6,6 @@ pytest 配置和测试 fixtures
 import asyncio
 import os
 from typing import AsyncGenerator, Generator
-from datetime import datetime
 
 import pytest
 import pytest_asyncio
@@ -92,13 +91,10 @@ async def test_user(db) -> User:
         User: 测试用户对象
     """
     user = User(
-        username="testuser1",
-        email="test1@example.com",
-        password_hash=hash_password("Password123"),
-        full_name="测试用户1",
-        employee_id="E001",
-        status="active",
-        roles=["user"],
+        name="testuser1",
+        password=hash_password("Password123"),
+        status=0,
+        isAdmin=False,
     )
     await user.insert()
     return user
@@ -113,12 +109,10 @@ async def suspended_user(db) -> User:
         User: 被禁用的测试用户对象
     """
     user = User(
-        username="suspended_user",
-        email="suspended@example.com",
-        password_hash=hash_password("Password123"),
-        full_name="被禁用用户",
-        status="suspended",
-        roles=["user"],
+        name="suspended_user",
+        password=hash_password("Password123"),
+        status=1,  # 1-禁用
+        isAdmin=False,
     )
     await user.insert()
     return user
@@ -135,7 +129,7 @@ def auth_headers(test_user: User) -> dict:
     Returns:
         dict: 包含 Authorization 的请求头
     """
-    token = create_access_token(str(test_user.id), test_user.username)
+    token = create_access_token(str(test_user.id), test_user.name)
     return {"Authorization": f"Bearer {token}"}
 
 
@@ -155,21 +149,16 @@ def refresh_token(test_user: User) -> str:
 
 # 测试数据常量
 TEST_USER_DATA = {
-    "username": "newuser",
-    "email": "new@example.com",
+    "name": "newuser",
     "password": "Password123",
-    "full_name": "新用户",
-    "employee_id": "E002",
 }
 
 TEST_LOGIN_DATA = {
-    "username": "testuser1",
+    "name": "testuser1",
     "password": "Password123",
 }
 
 WEAK_PASSWORD_DATA = {
-    "username": "weakpass",
-    "email": "weak@example.com",
+    "name": "weakpass",
     "password": "123456",
-    "full_name": "弱密码用户",
 }

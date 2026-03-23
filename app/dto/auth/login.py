@@ -4,45 +4,28 @@
 定义登录接口的请求和响应数据结构
 """
 from typing import Optional
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
     """
     用户登录请求 DTO
 
-    支持用户名或邮箱登录，两者至少提供一个
-
     Attributes:
-        username: 用户名（与 email 二选一）
-        email: 邮箱地址（与 username 二选一）
+        name: 用户名
         password: 密码
     """
 
-    username: Optional[str] = Field(
-        None,
-        description="用户名（与 email 二选一）",
+    name: str = Field(
+        ...,
+        description="用户名",
         examples=["zhangsan"]
-    )
-    email: Optional[str] = Field(
-        None,
-        description="邮箱地址（与 username 二选一）",
-        examples=["zhangsan@company.com"]
     )
     password: str = Field(
         ...,
         description="密码",
         examples=["Password123"]
     )
-
-    @model_validator(mode="after")
-    def validate_identifier(self) -> "LoginRequest":
-        """
-        验证至少提供了用户名或邮箱之一
-        """
-        if not self.username and not self.email:
-            raise ValueError("必须提供用户名或邮箱")
-        return self
 
 
 class UserInfo(BaseModel):
@@ -51,17 +34,15 @@ class UserInfo(BaseModel):
 
     Attributes:
         user_id: 用户 ID
-        username: 用户名
-        email: 邮箱地址
-        full_name: 真实姓名
-        roles: 角色列表
+        name: 用户名
+        status: 状态
+        is_admin: 是否为管理员
     """
 
     user_id: str = Field(..., description="用户 ID")
-    username: str = Field(..., description="用户名")
-    email: str = Field(..., description="邮箱地址")
-    full_name: Optional[str] = Field(None, description="真实姓名")
-    roles: list[str] = Field(default_factory=lambda: ["user"], description="角色列表")
+    name: str = Field(..., description="用户名")
+    status: int = Field(default=0, description="状态(0-正常, 1-禁用)")
+    is_admin: bool = Field(default=False, description="是否为管理员")
 
 
 class LoginResponse(BaseModel):
