@@ -3,6 +3,7 @@
 
 定义用户信息查询接口的响应数据结构
 """
+from typing import List
 from pydantic import BaseModel, Field
 
 
@@ -45,3 +46,16 @@ class UserResponse(BaseModel):
             create_at=user.createAt,
             update_at=user.updateAt,
         )
+
+
+class UserListResponse(BaseModel):
+    """
+    用户列表响应 DTO
+
+    Attributes:
+        count: 总数
+        data: 用户列表
+    """
+
+    count: int = Field(..., description="总数")
+    data: List[UserResponse] = Field(default_factory=list, description="用户列表")

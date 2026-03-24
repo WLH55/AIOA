@@ -41,7 +41,7 @@ class Department(Document):
     leader: Optional[str] = Field(None, description="部门负责人姓名")
 
     # 统计
-    count: int = Field(default=0, description="部门人数")
+    userCount: int = Field(default=0, description="部门人数")
 
     # 时间戳
     createAt: int = Field(default_factory=lambda: int(time.time() * 1000), description="创建时间戳")

@@ -18,6 +18,22 @@ class LeaveType(IntEnum):
     FUNERAL = 8       # 丧假
     BREASTFEEDING = 9 # 哺乳假
 
+    @property
+    def description(self) -> str:
+        """获取请假类型描述"""
+        descriptions = {
+            1: "事假",
+            2: "调休",
+            3: "病假",
+            4: "年假",
+            5: "产假",
+            6: "陪产假",
+            7: "婚假",
+            8: "丧假",
+            9: "哺乳假",
+        }
+        return descriptions.get(self.value, "未知请假类型")
+
     @classmethod
     def from_value(cls, value: int) -> "LeaveType":
         """

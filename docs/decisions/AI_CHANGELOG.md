@@ -217,3 +217,137 @@
 - [ ] 部署方案（Docker/K8s）
 - [ ] WebSocket 多实例部署（是否需要 Redis Pub/Sub）
 - [ ] WebSocket 消息持久化（是否需要）
+
+---
+
+## 2026-03-24 CRUD 业务接口实现
+
+### Decision #015: Java 到 Python 架构映射
+- **决策**: 采用三层架构映射（Router → Service → Repository）
+- **原因**: 与现有项目结构保持一致，降低学习成本
+- **影响**: 无接口层，略降低可测试性（可接受）
+- **替代方案**: 引入抽象基类（增加复杂度，收益不大）
+- **Files**: app/routers/, app/services/, app/repository/
+
+---
+
+### Decision #016: 时间戳单位统一
+- **决策**: 统一使用毫秒级 Unix 时间戳
+- **原因**: Python 项目已有实现使用毫秒级，精度更高，适用于高并发场景
+- **影响**: 与 Java 版本（秒级）交互时需注意转换（×1000）
+- **替代方案**: 使用秒级（与 Java 一致，但精度降低）
+- **Files**: 所有 entity 和 DTO 文件
+
+---
+
+### Decision #017: 审批流程设计
+- **决策**: 审批流程根据部门层级自动确定审批人
+- **原因**: 与 Java 版本保持一致，符合企业审批流程常见设计
+- **影响**: 实现复杂度较高，需要解析部门 parentPath
+- **替代方案**: 手动指定审批人（灵活性高，但用户操作繁琐）
+- **Files**: app/services/approval_service.py
+
+---
+
+### Decision #018: 部门用户级联操作
+- **决策**: 添加/删除部门用户时自动级联到上级部门
+- **原因**: 简化用户管理，保证上级部门能看到所有下级部门成员
+- **影响**: 操作可能影响多条记录，需要注意事务一致性
+- **替代方案**: 不级联（用户管理更灵活，但操作繁琐）
+- **Files**: app/services/department_service.py
+
+---
+
+### Decision #019: 待办删除权限
+- **决策**: 仅创建人可删除待办事项
+- **原因**: 防止误删他人待办，与 Java 版本保持一致
+- **影响**: 管理员也无法删除（可通过修改数据库解决）
+- **替代方案**: 管理员可删除任意待办（需要额外的权限判断）
+- **Files**: app/services/todo_service.py
+
+---
+
+### 实现进度记录
+
+**Spec 文档**: `docs/specs/crud-implementation/`
+
+| Step | 内容 | 状态 | 备注 |
+|------|------|------|------|
+| Step 1 | User DTO 层 | ✅ 已完成 | user_request.py, user_response.py |
+| Step 2 | User Repository 层 | ✅ 已完成 | 扩展 user_repository.py |
+| Step 3 | User Service 层 | ✅ 已完成 | user_service.py |
+| Step 4 | User Router 层 | ✅ 已完成 | user.py |
+| Step 5 | Todo DTO 层 | ✅ 已完成 | todo_request.py, todo_response.py |
+| Step 6 | Todo Repository 层 | ✅ 已完成 | todo_repository.py |
+| Step 7 | Todo Service 层 | ✅ 已完成 | todo_service.py |
+| Step 8 | Todo Router 层 | ✅ 已完成 | todo.py |
+| Step 9 | Approval DTO 层 | ✅ 已完成 | approval_request.py, approval_response.py |
+| Step 10 | Approval Repository 层 | ✅ 已完成 | approval_repository.py |
+| Step 11 | Approval Service 层 | ✅ 已完成 | approval_service.py |
+| Step 12 | Approval Router 层 | ✅ 已完成 | approval.py |
+| Step 13 | Department DTO 层 | ✅ 已完成 | department_request.py, department_response.py |
+| Step 14 | Department Repository 层 | ✅ 已完成 | department_repository.py, department_user_repository.py |
+| Step 15 | Department Service 层 | ✅ 已完成 | department_service.py |
+| Step 16 | Department Router 层 | ✅ 已完成 | department.py |
+| Step 17 | ChatLog DTO 层 | ✅ 已完成 | chat_log_request.py, chat_log_response.py |
+| Step 18 | ChatLog Repository 层 | ✅ 已完成 | chat_log_repository.py |
+| Step 19 | ChatLog Service 层 | ✅ 已完成 | chat_log_service.py |
+| Step 20 | ChatLog Router 层 | ✅ 已完成 | chat_log.py |
+| Step 21 | 注册路由 | ✅ 已完成 | main.py 更新 |
+| Step 22 | 代码审查 | ✅ 已完成 | 发现 6 个问题并修复 |
+
+**代码审查修复 (2026-03-24)**:
+
+| 问题 | 修复 |
+|------|------|
+| 权限校验缺失 | 用户编辑/删除接口添加管理员权限验证 |
+| 待办完成漏洞 | 验证只能完成自己的待办 |
+| 用户创建默认禁用 | 修改默认 status=0 |
+| 审批完成时间缺失 | 通过时设置 finishAt 等字段 |
+| 审批编号可能重复 | 使用时间戳+随机数生成 |
+| 部门用户缺少索引 | 添加 depId/userId 索引 |
+
+**已实现的 API 端点（31 个）**:
+
+User 模块 (7 个):
+- `POST /api/v1/user/login` - 用户登录
+- `GET /api/v1/user/{user_id}` - 获取用户信息
+- `POST /api/v1/user` - 创建用户
+- `PUT /api/v1/user` - 编辑用户
+- `DELETE /api/v1/user/{user_id}` - 删除用户
+- `GET /api/v1/user/list` - 用户列表
+- `POST /api/v1/user/password` - 修改密码
+
+Todo 模块 (7 个):
+- `GET /api/v1/todo/{todo_id}` - 获取待办详情
+- `POST /api/v1/todo` - 创建待办
+- `PUT /api/v1/todo` - 编辑待办
+- `DELETE /api/v1/todo/{todo_id}` - 删除待办
+- `POST /api/v1/todo/finish` - 完成待办
+- `POST /api/v1/todo/record` - 创建操作记录
+- `GET /api/v1/todo/list` - 待办列表
+
+Approval 模块 (4 个):
+- `GET /api/v1/approval/{approval_id}` - 获取审批详情
+- `POST /api/v1/approval` - 创建审批申请
+- `PUT /api/v1/approval/dispose` - 处理审批
+- `GET /api/v1/approval/list` - 审批列表
+
+Department 模块 (9 个):
+- `GET /api/v1/dep/soa` - 获取部门树结构
+- `GET /api/v1/dep/{department_id}` - 获取部门详情
+- `POST /api/v1/dep` - 创建部门
+- `PUT /api/v1/dep` - 更新部门
+- `DELETE /api/v1/dep/{department_id}` - 删除部门
+- `POST /api/v1/dep/user` - 设置部门用户
+- `POST /api/v1/dep/user/add` - 添加部门员工
+- `DELETE /api/v1/dep/user/remove` - 删除部门员工
+- `GET /api/v1/dep/user/{user_id}` - 获取用户部门信息
+
+ChatLog 模块 (4 个):
+- `GET /api/v1/chat/{chat_log_id}` - 获取聊天记录详情
+- `POST /api/v1/chat` - 创建聊天记录
+- `GET /api/v1/chat/list` - 聊天记录列表
+- `GET /api/v1/chat/conversation/{conversation_id}` - 按会话查询
+
+**实施完成**: 2026-03-24

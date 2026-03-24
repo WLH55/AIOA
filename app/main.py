@@ -13,9 +13,19 @@ import redis.asyncio as redis
 from app.config import settings, setup_logging
 from app.config.exceptions import register_exception_handlers
 from app.models.user import User
+from app.models.todo import Todo
+from app.models.approval import Approval
+from app.models.department import Department
+from app.models.department_user import DepartmentUser
+from app.models.chat_log import ChatLog
 
 # 导入路由
-from app.routers import auth_router, example, ws_router
+from app.routers import auth_router, ws_router
+from app.routers import user as user_router
+from app.routers import todo as todo_router
+from app.routers import approval as approval_router
+from app.routers import department as department_router
+from app.routers import chat_log as chat_log_router
 from app.services.ws_manager import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -37,7 +47,14 @@ async def lifespan(app: FastAPI):
         motor_client = AsyncIOMotorClient(settings.MONGODB_URI)
         await init_beanie(
             database=motor_client[settings.MONGODB_DATABASE],
-            document_models=[User],
+            document_models=[
+                User,
+                Todo,
+                Approval,
+                Department,
+                DepartmentUser,
+                ChatLog,
+            ],
         )
         logger.info(f"MongoDB 连接成功: {settings.MONGODB_DATABASE}")
     except Exception as e:
@@ -109,8 +126,13 @@ def create_app() -> FastAPI:
 
     # ========== 注册路由 ==========
     app.include_router(auth_router, prefix=settings.API_PREFIX)
-    app.include_router(example.router, prefix=settings.API_PREFIX)
     app.include_router(ws_router, prefix=settings.API_PREFIX)
+    # CRUD 业务路由
+    app.include_router(user_router.router, prefix=settings.API_PREFIX)
+    app.include_router(todo_router.router, prefix=settings.API_PREFIX)
+    app.include_router(approval_router.router, prefix=settings.API_PREFIX)
+    app.include_router(department_router.router, prefix=settings.API_PREFIX)
+    app.include_router(chat_log_router.router, prefix=settings.API_PREFIX)
 
     # ========== 健康检查 ==========
     @app.get("/health")

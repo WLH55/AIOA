@@ -21,6 +21,25 @@ class ApprovalType(IntEnum):
     OVERTIME = 11       # 加班审批
     BUYER_CONTRACT = 12 # 采购合同审批
 
+    @property
+    def description(self) -> str:
+        """获取审批类型描述"""
+        descriptions = {
+            1: "通用审批",
+            2: "请假审批",
+            3: "补卡审批",
+            4: "外出审批",
+            5: "报销审批",
+            6: "付款审批",
+            7: "采购审批",
+            8: "收款审批",
+            9: "转正审批",
+            10: "离职审批",
+            11: "加班审批",
+            12: "采购合同审批",
+        }
+        return descriptions.get(self.value, "未知审批类型")
+
     @classmethod
     def from_value(cls, value: int) -> "ApprovalType":
         """

@@ -1,0 +1,124 @@
+# AIWorkHelper API 本地开发环境配置文件
+# 此配置用于本地开发和测试环境
+
+spring:
+  application:
+    name: aiworkhelper
+
+  # MongoDB 数据库配置
+  data:
+    mongodb:
+      host: 127.0.0.1
+      port: 27017
+      database: aiworkhelper
+      # 如果需要认证，取消注释以下配置
+      # username:
+      # password:
+      # authentication-database: admin
+
+    # Redis 配置
+    redis:
+      host: 127.0.0.1
+      port: 6379
+      # password:
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1ms
+
+  # 文件上传配置
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 50MB
+      max-request-size: 50MB
+
+  # Security 配置
+  security:
+    user:
+      name: admin
+      password: admin
+
+  # Spring AI DashScope 配置
+  ai:
+    dashscope:
+      api-key: sk-45e155e83f524602b19b7c67e45512d9
+      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      chat:
+        options:
+          model: qwen-max
+          temperature: 0.7
+      embedding:
+        options:
+          model: text-embedding-v3
+
+# 服务器配置
+server:
+  port: 8888
+  servlet:
+    context-path: /
+
+# WebSocket 配置
+websocket:
+  server:
+    port: 9000
+    path: /ws
+
+# JWT Token 配置
+jwt:
+  # 密钥至少需要 256 bits (32 字节)，这里使用 64 字符的密钥确保足够安全
+  secret: kuangbiao.camps.aiworkhelper.jwt.secret.key.2024.secure.minimum.256bits
+  # Token 过期时间（秒），8640000秒 = 100天
+  expire: 8640000
+
+# 自定义 DashScope 配置（保留用于自定义代码）
+dashscope:
+  api-key: sk-45e155e83f524602b19b7c67e45512d9
+  base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  chat:
+    model: qwen-max
+    temperature: 0.7
+  embedding:
+    model: text-embedding-v3
+
+# AI Agent 记忆配置
+ai:
+  memory:
+    # 最大Token限制（字符数估算，约等于1.5倍的token数）
+    # 当对话超过此限制时，自动调用LLM生成摘要，保留关键信息
+    # 默认2000字符，约等于3000 tokens
+    max-token-limit: 2000
+
+# 文件上传配置
+upload:
+  save-path: upload/
+  host: http://127.0.0.1:8888
+
+# 日志配置
+logging:
+  level:
+    root: INFO
+    com.aiwork.helper: DEBUG
+    org.springframework.data.mongodb: DEBUG
+    org.springframework.security: DEBUG
+  pattern:
+    console: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n'
+    file: '%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n'
+  file:
+    name: logs/aiworkhelper.log
+    max-size: 10MB
+    max-history: 30
+
+# 管理端点配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always

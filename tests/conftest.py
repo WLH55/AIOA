@@ -23,6 +23,11 @@ os.environ["REDIS_URI"] = "redis://:redis123@118.145.107.158:6379/1"
 
 from app.main import app
 from app.models.user import User
+from app.models.todo import Todo, UserTodo
+from app.models.approval import Approval, Approver
+from app.models.department import Department
+from app.models.department_user import DepartmentUser
+from app.models.chat_log import ChatLog
 from app.security.password import hash_password
 from app.security.jwt import create_access_token, create_refresh_token
 
@@ -44,7 +49,7 @@ async def db():
     """
     初始化测试数据库连接
 
-    使用独立的测试数据库，测试结束后清理
+    使用独立的测试数据库，保留数据以便观察
     """
     # 连接测试数据库
     client = AsyncIOMotorClient(os.environ["MONGODB_URI"])
@@ -53,15 +58,19 @@ async def db():
     # 初始化 Beanie
     await init_beanie(
         database=database,
-        document_models=[User],
+        document_models=[
+            User,
+            Todo,
+            Approval,
+            Department,
+            DepartmentUser,
+            ChatLog,
+        ],
     )
 
     yield database
 
-    # 清理测试数据
-    await User.delete_all()
-
-    # 关闭连接
+    # 关闭连接（保留测试数据）
     client.close()
 
 
@@ -71,10 +80,8 @@ async def client(db) -> AsyncGenerator[AsyncClient, None]:
     创建测试客户端
 
     使用 httpx.AsyncClient 测试 FastAPI 应用
+    保留测试数据以便观察
     """
-    # 每个测试前清理数据
-    await User.delete_all()
-
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test"
@@ -101,6 +108,24 @@ async def test_user(db) -> User:
 
 
 @pytest_asyncio.fixture
+async def admin_user(db) -> User:
+    """
+    创建管理员测试用户
+
+    Returns:
+        User: 管理员用户对象
+    """
+    user = User(
+        name="admin",
+        password=hash_password("Password123"),
+        status=0,
+        isAdmin=True,
+    )
+    await user.insert()
+    return user
+
+
+@pytest_asyncio.fixture
 async def suspended_user(db) -> User:
     """
     创建被禁用的测试用户
@@ -116,6 +141,58 @@ async def suspended_user(db) -> User:
     )
     await user.insert()
     return user
+
+
+@pytest_asyncio.fixture
+async def test_department(db, test_user: User) -> Department:
+    """
+    创建测试部门
+
+    Returns:
+        Department: 测试部门对象
+    """
+    department = Department(
+        name="技术部",
+        parentId=None,
+        parentPath=None,
+        level=1,
+        leaderId=str(test_user.id),
+        userCount=1,
+    )
+    await department.insert()
+    return department
+
+
+@pytest_asyncio.fixture
+async def test_todo(db, test_user: User) -> Todo:
+    """
+    创建测试待办
+
+    Returns:
+        Todo: 测试待办对象
+    """
+    import time
+    todo = Todo(
+        creatorId=str(test_user.id),
+        title="测试待办",
+        deadlineAt=int(time.time() * 1000) + 86400000,  # 1天后
+        desc="这是一个测试待办",
+        executes=[
+            UserTodo(
+                id="test-exec-id",
+                userId=str(test_user.id),
+                userName=test_user.name,
+                todoId="",  # 在插入后更新
+                todoStatus=1,
+            )
+        ],
+        todoStatus=1,
+    )
+    await todo.insert()
+    # 更新 todoId
+    todo.executes[0].todoId = str(todo.id)
+    await todo.save()
+    return todo
 
 
 @pytest_asyncio.fixture

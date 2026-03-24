@@ -6,7 +6,7 @@
 """
 import time
 from pydantic import Field
-from beanie import Document
+from beanie import Document, Indexed
 
 
 class DepartmentUser(Document):
@@ -23,8 +23,8 @@ class DepartmentUser(Document):
     """
 
     # 关联信息
-    depId: str = Field(..., description="部门ID")
-    userId: str = Field(..., description="用户ID")
+    depId: Indexed(str) = Field(..., description="部门ID")
+    userId: Indexed(str) = Field(..., description="用户ID")
 
     # 时间戳
     createAt: int = Field(default_factory=lambda: int(time.time() * 1000), description="创建时间戳")
@@ -33,6 +33,10 @@ class DepartmentUser(Document):
     class Settings:
         """Beanie 设置"""
         name = "department_user"
+        indexes = [
+            "depId",
+            "userId",
+        ]
 
     class Config:
         """Pydantic 配置"""

@@ -132,6 +132,7 @@ class Approval(Document):
     class Settings:
         """Beanie 设置"""
         name = "approval"
+        use_state_management = False
 
     class Config:
         """Pydantic 配置"""

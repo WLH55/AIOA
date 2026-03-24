@@ -1,0 +1,75 @@
+/**
+ * @author: 公众号：IT杨秀才
+ * @doc:后端，AI知识进阶，后端面试场景题大全：https://golangstar.cn/
+ */
+package com.aiwork.helper.dto.response;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.util.List;
+
+/**
+ * author:  公众号：IT杨秀才
+ * 后端，AI知识进阶，后端面试场景题大全：https://golangstar.cn/
+ * 待办详情响应
+ * 对应Go版本: internal/domain/domain.go TodoInfoResp
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class TodoInfoResponse {
+
+    /**
+     * 待办ID
+     */
+    private String id;
+
+    /**
+     * 创建人ID
+     */
+    private String creatorId;
+
+    /**
+     * 创建人姓名
+     */
+    private String creatorName;
+
+    /**
+     * 标题
+     */
+    private String title;
+
+    /**
+     * 截止时间
+     */
+    private Long deadlineAt;
+
+    /**
+     * 描述
+     */
+    private String desc;
+
+    /**
+     * 待办状态
+     */
+    private Integer status;
+
+    /**
+     * 待办状态
+     */
+    private Integer todoStatus;
+
+    /**
+     * 执行人详细信息列表
+     */
+    private List<UserTodoResponse> executeIds;
+
+    /**
+     * 操作记录列表
+     */
+    private List<TodoRecordResponse> records;
+}
