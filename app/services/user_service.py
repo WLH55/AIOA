@@ -207,11 +207,11 @@ class UserService:
 
         # 验证原密码（管理员修改他人密码时无需验证原密码）
         if str(current_user.id) == request.id:
-            if not verify_password(request.old_pwd, user.password):
+            if not verify_password(request.oldPwd, user.password):
                 raise BusinessValidationException("原密码错误")
 
         # 更新密码
-        user.password = hash_password(request.new_pwd)
+        user.password = hash_password(request.newPwd)
         await UserRepository.update(user)
         logger.info(f"修改密码成功: {user.name}")
 

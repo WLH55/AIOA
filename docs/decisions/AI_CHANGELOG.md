@@ -351,3 +351,81 @@ ChatLog 模块 (4 个):
 - `GET /api/v1/chat/conversation/{conversation_id}` - 按会话查询
 
 **实施完成**: 2026-03-24
+
+---
+
+## 2026-03-25 群组功能实现 (Group Feature)
+
+### Decision #020: 群组功能架构设计
+- **决策**: 创建独立的 Group 模型，复用 ChatLog 处理群组消息
+- **原因**: 解耦群组管理和消息存储，ChatLog 已支持群聊（chatType=1）
+- **影响**: 新增 Group 模型和相关 CRUD 接口，WebSocket 系统消息支持
+- **替代方案**: 将群组信息嵌入 ChatLog（不符合关系型设计原则）
+- **Files**: app/models/group.py, app/services/group_service.py
+
+---
+
+### Decision #021: 群组成员管理权限
+- **决策**: 仅群主可执行管理操作（邀请/移除成员、修改群组、解散群组）
+- **原因**: 简化权限模型，符合企业内部群组常见设计
+- **影响**: 群主退出需要先解散或转让（本期不支持转让）
+- **替代方案**: 引入管理员角色（增加复杂度）
+- **Files**: app/services/group_service.py
+
+---
+
+### Decision #022: 群组系统消息通知
+- **决策**: 使用 WebSocket 广播系统消息 + ChatLog 持久化
+- **原因**: 实时通知所有成员，同时保留消息历史
+- **影响**: 需要确保所有成员在线才能收到实时通知
+- **替代方案**: 仅持久化，用户轮询查询（实时性差）
+- **Files**: app/services/group_service.py (_send_system_message)
+
+---
+
+### 实现进度记录
+
+**Spec 文档**: `docs/specs/feature-group/`
+
+| Step | 内容 | 状态 | 备注 |
+|------|------|------|------|
+| Step 1 | Group 数据模型 | ✅ 已完成 | app/models/group.py |
+| Step 2 | 请求 DTO | ✅ 已完成 | app/dto/group/group_request.py |
+| Step 3 | 响应 DTO | ✅ 已完成 | app/dto/group/group_response.py |
+| Step 4 | Repository 层 | ✅ 已完成 | app/repository/group_repository.py |
+| Step 5 | Service 层 | ✅ 已完成 | app/services/group_service.py |
+| Step 6 | Router 层 | ✅ 已完成 | app/routers/group.py |
+| Step 7 | 注册路由和模型 | ✅ 已完成 | app/main.py 更新 |
+
+**已实现的 API 端点（8 个）**:
+
+Group 模块:
+- `POST /api/v1/group/create` - 创建群组
+- `GET /api/v1/group/list` - 获取群组列表
+- `GET /api/v1/group/{id}` - 获取群组详情
+- `POST /api/v1/group/{id}/invite` - 邀请成员
+- `POST /api/v1/group/{id}/remove` - 移除成员
+- `POST /api/v1/group/{id}/exit` - 退出群组
+- `PUT /api/v1/group/{id}` - 修改群组信息
+- `DELETE /api/v1/group/{id}` - 解散群组
+
+**WebSocket 系统消息类型**:
+- `group_create` - 群组创建通知
+- `group_dismiss` - 群组解散通知
+- `group_invite` - 成员邀请通知
+- `group_remove` - 成员移除通知
+- `group_exit` - 成员退出通知
+
+**常量定义**:
+- `MAX_MEMBERS = 100` - 群组成员上限
+- `STATUS_NORMAL = 1` - 正常状态
+- `STATUS_DISMISSED = 2` - 已解散状态
+
+**业务规则**:
+1. 创建群组时，创建者自动成为群主
+2. 成员数量上限 100 人
+3. 只有群主可以邀请/移除成员、修改群组、解散群组
+4. 群主不能退出群组（需先解散）
+5. 解散后群组状态更新为已解散，但数据保留
+
+**实施完成**: 2026-03-25

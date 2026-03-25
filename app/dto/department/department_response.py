@@ -13,9 +13,9 @@ class DepartmentUserResponse(BaseModel):
     """
 
     id: Optional[str] = Field(None, description="关联ID")
-    user_id: str = Field(..., description="用户ID")
-    dep_id: str = Field(..., description="部门ID")
-    user_name: Optional[str] = Field(None, description="用户名")
+    userId: str = Field(..., description="用户ID")
+    depId: str = Field(..., description="部门ID")
+    userName: Optional[str] = Field(None, description="用户名")
 
 
 class DepartmentResponse(BaseModel):
@@ -27,10 +27,10 @@ class DepartmentResponse(BaseModel):
 
     id: str = Field(..., description="部门ID")
     name: str = Field(..., description="部门名称")
-    parent_id: Optional[str] = Field(None, description="父部门ID")
-    parent_path: Optional[str] = Field(None, description="父部门路径")
+    parentId: Optional[str] = Field(None, description="父部门ID")
+    parentPath: Optional[str] = Field(None, description="父部门路径")
     level: int = Field(default=1, description="部门层级")
-    leader_id: Optional[str] = Field(None, description="部门负责人ID")
+    leaderId: Optional[str] = Field(None, description="部门负责人ID")
     leader: Optional[str] = Field(None, description="部门负责人姓名")
     count: int = Field(default=0, description="部门人数")
     users: List[DepartmentUserResponse] = Field(default_factory=list, description="部门用户列表")

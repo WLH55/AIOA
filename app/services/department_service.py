@@ -81,9 +81,9 @@ class DepartmentService:
             user_name = user_map.get(dep_user.userId, "")
             user_resp = DepartmentUserResponse(
                 id=str(dep_user.id),
-                user_id=dep_user.userId,
-                dep_id=dep_user.depId,
-                user_name=user_name,
+                userId=dep_user.userId,
+                depId=dep_user.depId,
+                userName=user_name,
             )
             if dep_user.depId not in dep_users_map:
                 dep_users_map[dep_user.depId] = []
@@ -166,19 +166,19 @@ class DepartmentService:
 
         # 构建父路径
         parent_path = ""
-        if request.parent_id:
-            parent_dep = await DepartmentRepository.find_by_id(request.parent_id)
+        if request.parentId:
+            parent_dep = await DepartmentRepository.find_by_id(request.parentId)
             if not parent_dep:
                 raise ResourceNotFoundException("父部门不存在")
-            parent_path = DepartmentService._build_parent_path(parent_dep.parentPath, request.parent_id)
+            parent_path = DepartmentService._build_parent_path(parent_dep.parentPath, request.parentId)
 
         # 创建部门
         department = Department(
             name=request.name,
-            parentId=request.parent_id,
+            parentId=request.parentId,
             parentPath=parent_path,
             level=request.level or 1,
-            leaderId=request.leader_id,
+            leaderId=request.leaderId,
             userCount=1,
         )
 
@@ -187,7 +187,7 @@ class DepartmentService:
 
         # 将负责人添加到部门
         await DepartmentService.add_department_user(
-            AddDepartmentUserRequest(dep_id=str(saved.id), user_id=request.leader_id)
+            AddDepartmentUserRequest(depId=str(saved.id), userId=request.leaderId)
         )
 
     @staticmethod
@@ -215,9 +215,9 @@ class DepartmentService:
             raise BusinessValidationException("已存在该部门")
 
         department.name = request.name
-        department.parentId = request.parent_id
+        department.parentId = request.parentId
         department.level = request.level or department.level
-        department.leaderId = request.leader_id
+        department.leaderId = request.leaderId
 
         await DepartmentRepository.update(department)
         logger.info(f"编辑部门成功: id={request.id}")
@@ -287,22 +287,22 @@ class DepartmentService:
         Args:
             request: 设置部门用户请求 DTO
         """
-        department = await DepartmentRepository.find_by_id(request.dep_id)
+        department = await DepartmentRepository.find_by_id(request.depId)
         if not department:
             raise ResourceNotFoundException("部门不存在")
 
         # 获取当前部门的所有用户
-        current_dep_users = await DepartmentUserRepository.find_by_dep_id(request.dep_id)
+        current_dep_users = await DepartmentUserRepository.find_by_dep_id(request.depId)
 
         current_user_set = {du.userId for du in current_dep_users}
-        new_user_set = set(request.user_ids or [])
+        new_user_set = set(request.userIds or [])
 
         # 删除不在新列表中的用户
         for du in current_dep_users:
             if du.userId not in new_user_set and du.userId != department.leaderId:
                 try:
                     await DepartmentService.remove_department_user(
-                        RemoveDepartmentUserRequest(dep_id=request.dep_id, user_id=du.userId)
+                        RemoveDepartmentUserRequest(depId=request.depId, userId=du.userId)
                     )
                 except Exception as e:
                     logger.warning(f"删除部门用户失败: {e}")
@@ -312,12 +312,12 @@ class DepartmentService:
             if user_id not in current_user_set:
                 try:
                     await DepartmentService.add_department_user(
-                        AddDepartmentUserRequest(dep_id=request.dep_id, user_id=user_id)
+                        AddDepartmentUserRequest(depId=request.depId, userId=user_id)
                     )
                 except Exception as e:
                     logger.warning(f"添加部门用户失败: {e}")
 
-        logger.info(f"设置部门用户成功: depId={request.dep_id}")
+        logger.info(f"设置部门用户成功: depId={request.depId}")
 
     @staticmethod
     async def add_department_user(request: AddDepartmentUserRequest) -> None:
@@ -332,21 +332,21 @@ class DepartmentService:
             BusinessValidationException: 用户已在该部门中
         """
         # 验证部门是否存在
-        department = await DepartmentRepository.find_by_id(request.dep_id)
+        department = await DepartmentRepository.find_by_id(request.depId)
         if not department:
             raise ResourceNotFoundException("部门不存在")
 
         # 验证用户是否存在
-        user = await UserRepository.find_by_id(request.user_id)
+        user = await UserRepository.find_by_id(request.userId)
         if not user:
             raise ResourceNotFoundException("用户不存在")
 
         # 检查用户是否已在该部门
-        if await DepartmentUserRepository.exists_by_dep_and_user(request.dep_id, request.user_id):
+        if await DepartmentUserRepository.exists_by_dep_and_user(request.depId, request.userId):
             raise BusinessValidationException("该用户已在此部门中")
 
         # 添加用户到当前部门
-        dep_user = DepartmentUser(depId=request.dep_id, userId=request.user_id)
+        dep_user = DepartmentUser(depId=request.depId, userId=request.userId)
         await DepartmentUserRepository.create(dep_user)
 
         # 如果有上级部门，将用户也添加到所有上级部门
@@ -354,11 +354,11 @@ class DepartmentService:
             parent_ids = DepartmentService._parse_parent_path(department.parentPath)
 
             for parent_id in parent_ids:
-                if not await DepartmentUserRepository.exists_by_dep_and_user(parent_id, request.user_id):
-                    parent_dep_user = DepartmentUser(depId=parent_id, userId=request.user_id)
+                if not await DepartmentUserRepository.exists_by_dep_and_user(parent_id, request.userId):
+                    parent_dep_user = DepartmentUser(depId=parent_id, userId=request.userId)
                     await DepartmentUserRepository.create(parent_dep_user)
 
-        logger.info(f"添加部门用户成功: depId={request.dep_id}, userId={request.user_id}")
+        logger.info(f"添加部门用户成功: depId={request.depId}, userId={request.userId}")
 
     @staticmethod
     async def remove_department_user(request: RemoveDepartmentUserRequest) -> None:
@@ -373,19 +373,19 @@ class DepartmentService:
             BusinessValidationException: 不能删除部门负责人或用户不在此部门中
         """
         # 验证部门是否存在
-        department = await DepartmentRepository.find_by_id(request.dep_id)
+        department = await DepartmentRepository.find_by_id(request.depId)
         if not department:
             raise ResourceNotFoundException("部门不存在")
 
         # 不能删除部门负责人
-        if request.user_id == department.leaderId:
+        if request.userId == department.leaderId:
             raise BusinessValidationException("不能删除部门负责人")
 
         # 查找用户在该部门的关联记录
-        dep_users = await DepartmentUserRepository.find_by_dep_id(request.dep_id)
+        dep_users = await DepartmentUserRepository.find_by_dep_id(request.depId)
         target_du = None
         for du in dep_users:
-            if du.userId == request.user_id:
+            if du.userId == request.userId:
                 target_du = du
                 break
 
@@ -403,7 +403,7 @@ class DepartmentService:
             all_user_deps = await DepartmentUserRepository.find_all()
             user_dep_ids: Set[str] = set()
             for ud in all_user_deps:
-                if ud.userId == request.user_id and ud.depId != request.dep_id:
+                if ud.userId == request.userId and ud.depId != request.depId:
                     user_dep_ids.add(ud.depId)
 
             # 如果用户已经不在任何部门了，从所有父部门删除
@@ -411,7 +411,7 @@ class DepartmentService:
                 for parent_id in parent_ids:
                     parent_dep_users = await DepartmentUserRepository.find_by_dep_id(parent_id)
                     for pdu in parent_dep_users:
-                        if pdu.userId == request.user_id:
+                        if pdu.userId == request.userId:
                             await DepartmentUserRepository.delete(str(pdu.id))
                             break
             else:
@@ -443,12 +443,12 @@ class DepartmentService:
                     if not still_under_this_parent:
                         parent_dep_users = await DepartmentUserRepository.find_by_dep_id(parent_id)
                         for pdu in parent_dep_users:
-                            if pdu.userId == request.user_id:
+                            if pdu.userId == request.userId:
                                 await DepartmentUserRepository.delete(str(pdu.id))
                                 user_dep_ids.discard(parent_id)
                                 break
 
-        logger.info(f"删除部门用户成功: depId={request.dep_id}, userId={request.user_id}")
+        logger.info(f"删除部门用户成功: depId={request.depId}, userId={request.userId}")
 
     @staticmethod
     async def department_user_info(user_id: str) -> DepartmentResponse:
@@ -523,7 +523,7 @@ class DepartmentService:
         递归构建部门树结构
         """
         for dep in root_dep:
-            path = DepartmentService._build_parent_path(dep.parent_path, dep.id)
+            path = DepartmentService._build_parent_path(dep.parentPath, dep.id)
 
             children = group_dep.get(path)
             if children:
@@ -556,9 +556,9 @@ class DepartmentService:
         return DepartmentResponse(
             id=str(department.id),
             name=department.name,
-            parent_id=department.parentId,
-            parent_path=department.parentPath,
+            parentId=department.parentId,
+            parentPath=department.parentPath,
             level=department.level,
-            leader_id=department.leaderId,
+            leaderId=department.leaderId,
             count=department.userCount,
         )

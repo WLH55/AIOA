@@ -14,6 +14,21 @@ from fastapi import WebSocket
 logger = logging.getLogger(__name__)
 
 
+# WebSocket 关闭码（4000-4999 为应用自定义码）
+class WSCloseCode:
+    """WebSocket 关闭码"""
+    # 正常关闭
+    NORMAL = 1000
+    # 端点离开
+    GOING_AWAY = 1001
+    # 被新登录踢掉
+    KICKED_BY_NEW_LOGIN = 4100
+    # 被管理员踢掉
+    KICKED_BY_ADMIN = 4102
+    # 心跳超时
+    HEARTBEAT_TIMEOUT = 4101
+
+
 class WebSocketConnectionManager:
     """
     WebSocket 连接管理器
@@ -82,13 +97,15 @@ class WebSocketConnectionManager:
             # 生成 session_id
             session_id = self._generate_session_id()
 
-            # 检查是否已有连接（踢掉旧连接）
+            # 先建立新连接（避免旧连接的关闭消息影响新连接）
+            await websocket.accept()
+
+            # 检查是否已有旧连接，需要清理
             if user_id in self._user_to_ws:
                 old_ws = self._user_to_ws[user_id]
-                await self._kick_old_connection(old_ws, user_id, username)
-
-            # 建立新连接
-            await websocket.accept()
+                # 只有当旧连接不是当前连接时才踢掉
+                if old_ws != websocket:
+                    await self._kick_old_connection(old_ws, user_id, username)
 
             # 记录映射
             self._session_to_user[session_id] = user_id
@@ -167,9 +184,9 @@ class WebSocketConnectionManager:
                 except Exception:
                     pass
 
-                # 关闭连接
+                # 关闭连接（使用特定关闭码，客户端可识别）
                 try:
-                    await websocket.close(code=1000, reason=reason)
+                    await websocket.close(code=WSCloseCode.KICKED_BY_ADMIN, reason=reason)
                 except Exception:
                     pass
 
@@ -354,7 +371,7 @@ class WebSocketConnectionManager:
                 f"old_session_id={old_session_id}"
             )
 
-            # 发送被踢消息
+            # 发送被踢消息（如果连接仍然有效）
             try:
                 await self._send_to_websocket(old_ws, {
                     "type": "kicked",
@@ -363,15 +380,16 @@ class WebSocketConnectionManager:
                     "timestamp": datetime.utcnow().isoformat(),
                 })
             except Exception:
-                pass
+                # 旧连接可能已经自然断开，忽略发送失败
+                logger.debug(f"旧连接已断开，无法发送踢人消息: session_id={old_session_id}")
 
-            # 关闭旧连接
+            # 关闭旧连接（使用特定关闭码，客户端可识别并决定是否重连）
             try:
-                await old_ws.close(code=1000, reason="new_login")
+                await old_ws.close(code=WSCloseCode.KICKED_BY_NEW_LOGIN, reason="new_login")
             except Exception:
                 pass
 
-            # 清理旧映射
+            # 清理旧映射（注意：不清理 _user_to_ws，因为新连接会覆盖）
             self._session_to_user.pop(old_session_id, None)
             self._ws_to_session.pop(old_ws, None)
             self._last_pong_time.pop(old_session_id, None)

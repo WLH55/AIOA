@@ -66,5 +66,5 @@ class RegisterResponse(BaseModel):
         name: 用户名
     """
 
-    user_id: str = Field(..., description="用户 ID")
+    user_id: str = Field(..., description="用户ID")
     name: str = Field(..., description="用户名")

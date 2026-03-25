@@ -28,37 +28,16 @@ class LoginRequest(BaseModel):
     )
 
 
-class UserInfo(BaseModel):
-    """
-    用户信息 DTO
-
-    Attributes:
-        user_id: 用户 ID
-        name: 用户名
-        status: 状态
-        is_admin: 是否为管理员
-    """
-
-    user_id: str = Field(..., description="用户 ID")
-    name: str = Field(..., description="用户名")
-    status: int = Field(default=0, description="状态(0-正常, 1-禁用)")
-    is_admin: bool = Field(default=False, description="是否为管理员")
-
-
 class LoginResponse(BaseModel):
     """
     用户登录响应 DTO
 
-    Attributes:
-        access_token: JWT Access Token
-        refresh_token: JWT Refresh Token
-        token_type: Token 类型（固定为 "bearer"）
-        expires_in: Access Token 过期时间（秒）
-        user: 用户信息
+    扁平化结构，与前端字段保持一致
     """
 
-    access_token: str = Field(..., description="JWT Access Token")
-    refresh_token: str = Field(..., description="JWT Refresh Token")
-    token_type: str = Field(default="bearer", description="Token 类型")
-    expires_in: int = Field(..., description="Access Token 过期时间（秒）")
-    user: UserInfo = Field(..., description="用户信息")
+    status: int = Field(default=0, description="状态(0-正常, 1-禁用)")
+    id: str = Field(..., description="用户 ID")
+    name: str = Field(..., description="用户名")
+    token: str = Field(..., description="JWT Access Token")
+    accessExpire: int = Field(..., description="Access Token 过期时间戳")
+    refreshAfter: int = Field(..., description="建议刷新时间戳")

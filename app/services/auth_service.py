@@ -13,7 +13,7 @@ from app.repository.user_repository import UserRepository
 from app.security.password import hash_password, verify_password
 from app.security.jwt import create_access_token, create_refresh_token, decode_jwt
 from app.dto.auth.register import RegisterRequest, RegisterResponse
-from app.dto.auth.login import LoginRequest, LoginResponse, UserInfo
+from app.dto.auth.login import LoginRequest, LoginResponse
 from app.dto.auth.token import TokenRefreshRequest, TokenRefreshResponse
 from app.dto.user.user_response import UserResponse
 
@@ -118,17 +118,17 @@ class AuthService:
 
         logger.info(f"用户登录成功: {user.name}")
 
+        # 计算过期时间戳
+        access_expire = int((user.updateAt / 1000) + settings.ACCESS_TOKEN_EXPIRE_DAYS * 24 * 60 * 60) * 1000
+        refresh_after = access_expire - 5 * 60 * 1000  # 提前5分钟刷新
+
         return LoginResponse(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            token_type="bearer",
-            expires_in=settings.ACCESS_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-            user=UserInfo(
-                user_id=str(user.id),
-                name=user.name,
-                status=user.status,
-                is_admin=user.isAdmin,
-            ),
+            status=user.status,
+            id=str(user.id),
+            name=user.name,
+            token=access_token,
+            accessExpire=access_expire,
+            refreshAfter=refresh_after,
         )
 
     @staticmethod

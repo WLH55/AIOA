@@ -39,14 +39,14 @@ class UpdatePasswordRequest(BaseModel):
     """
 
     id: str = Field(..., description="用户ID")
-    old_pwd: str = Field(..., min_length=6, description="原密码")
-    new_pwd: str = Field(..., min_length=6, description="新密码")
+    oldPwd: str = Field(..., min_length=6, description="原密码")
+    newPwd: str = Field(..., min_length=6, description="新密码")
 
-    @field_validator('new_pwd')
+    @field_validator('newPwd')
     @classmethod
     def validate_new_pwd(cls, v: str, info) -> str:
         """新密码不能与原密码相同"""
-        old_pwd = info.data.get('old_pwd')
+        old_pwd = info.data.get('oldPwd')
         if old_pwd and v == old_pwd:
             raise ValueError('新密码不能与原密码相同')
         return v

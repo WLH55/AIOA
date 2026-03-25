@@ -81,10 +81,10 @@ class TodoService:
                 execute_ids_response.append(
                     UserTodoResponse(
                         id=exec_item.id,
-                        user_id=exec_item.userId,
-                        user_name=user_name,
-                        todo_id=todo_id,
-                        todo_status=exec_item.todoStatus,
+                        userId=exec_item.userId,
+                        userName=user_name,
+                        todoId=todo_id,
+                        todoStatus=exec_item.todoStatus,
                     )
                 )
 
@@ -96,25 +96,25 @@ class TodoService:
                 user_name = record_user.name if record_user else ""
                 records_response.append(
                     TodoRecordResponse(
-                        todo_id=todo_id,
-                        user_id=record.userId,
-                        user_name=user_name,
+                        todoId=todo_id,
+                        userId=record.userId,
+                        userName=user_name,
                         content=record.content,
                         image=record.image,
-                        create_at=record.createAt,
+                        createAt=record.createAt,
                     )
                 )
 
         return TodoInfoResponse(
             id=str(todo.id),
-            creator_id=todo.creatorId,
-            creator_name=creator.name,
+            creatorId=todo.creatorId,
+            creatorName=creator.name,
             title=todo.title,
-            deadline_at=todo.deadlineAt,
+            deadlineAt=todo.deadlineAt,
             desc=todo.desc,
             status=todo_status,
-            todo_status=todo_status,
-            execute_ids=execute_ids_response,
+            todoStatus=todo_status,
+            executeIds=execute_ids_response,
             records=records_response,
         )
 
@@ -135,7 +135,7 @@ class TodoService:
         current_user_id = str(current_user.id)
 
         # 查询执行人信息
-        execute_user_ids = request.execute_ids if request.execute_ids else [current_user_id]
+        execute_user_ids = request.executeIds if request.executeIds else [current_user_id]
         users = await UserRepository.find_by_ids(execute_user_ids)
         user_map = {str(user.id): user for user in users}
 
@@ -156,9 +156,9 @@ class TodoService:
         records: List[TodoRecord] = []
         if request.records:
             for record_req in request.records:
-                record_user = user_map.get(record_req.user_id)
+                record_user = user_map.get(record_req.userId)
                 record = TodoRecord(
-                    userId=record_req.user_id,
+                    userId=record_req.userId,
                     userName=record_user.name if record_user else "",
                     content=record_req.content,
                     image=record_req.image,
@@ -170,7 +170,7 @@ class TodoService:
         todo = Todo(
             creatorId=current_user_id,
             title=request.title,
-            deadlineAt=request.deadline_at,
+            deadlineAt=request.deadlineAt,
             desc=request.desc,
             records=records,
             executes=executes,
@@ -212,7 +212,7 @@ class TodoService:
         # 更新字段
         todo.title = request.title
         todo.desc = request.desc
-        todo.deadlineAt = request.deadline_at
+        todo.deadlineAt = request.deadlineAt
         if request.status is not None:
             todo.todoStatus = request.status
 
@@ -256,13 +256,13 @@ class TodoService:
             ResourceNotFoundException: 待办事项不存在
             BusinessValidationException: 用户不在待办执行人列表中或无权限
         """
-        todo = await TodoRepository.find_by_id(request.todo_id)
+        todo = await TodoRepository.find_by_id(request.todoId)
         if not todo:
             raise ResourceNotFoundException("待办事项不存在")
 
-        # 验证权限：只能完成自己的待办，请求的 user_id 必须是当前用户
+        # 验证权限：只能完成自己的待办，请求的 userId 必须是当前用户
         current_user_id = str(current_user.id)
-        if request.user_id != current_user_id:
+        if request.userId != current_user_id:
             raise BusinessValidationException("只能完成自己的待办事项")
 
         # 标记指定用户的待办状态为完成
@@ -290,7 +290,7 @@ class TodoService:
             todo.todoStatus = TodoStatus.FINISHED.value
 
         await TodoRepository.update(todo)
-        logger.info(f"完成待办成功: todoId={request.todo_id}, userId={current_user_id}")
+        logger.info(f"完成待办成功: todoId={request.todoId}, userId={current_user_id}")
 
     @staticmethod
     async def create_record(request: TodoRecordRequest, current_user: User) -> None:
@@ -304,7 +304,7 @@ class TodoService:
         Raises:
             ResourceNotFoundException: 待办事项不存在
         """
-        todo = await TodoRepository.find_by_id(request.todo_id)
+        todo = await TodoRepository.find_by_id(request.todoId)
         if not todo:
             raise ResourceNotFoundException("待办事项不存在")
 
@@ -323,7 +323,7 @@ class TodoService:
         todo.records.append(record)
 
         await TodoRepository.update(todo)
-        logger.info(f"创建待办记录成功: todoId={request.todo_id}")
+        logger.info(f"创建待办记录成功: todoId={request.todoId}")
 
     @staticmethod
     async def list(request: TodoListRequest, current_user: User) -> TodoListResponse:
@@ -342,11 +342,11 @@ class TodoService:
         current_user_id = str(current_user.id)
 
         # 查询待办列表
-        if request.start_time and request.end_time:
+        if request.startTime and request.endTime:
             todos, total = await TodoRepository.find_by_execute_user_id_and_time_range(
                 current_user_id,
-                request.start_time,
-                request.end_time,
+                request.startTime,
+                request.endTime,
                 request.page,
                 request.count,
             )
@@ -393,16 +393,16 @@ class TodoService:
 
             todo_response = TodoResponse(
                 id=str(todo.id),
-                creator_id=todo.creatorId,
-                creator_name=creator_name,
+                creatorId=todo.creatorId,
+                creatorName=creator_name,
                 title=todo.title,
-                deadline_at=todo.deadlineAt,
+                deadlineAt=todo.deadlineAt,
                 desc=todo.desc,
                 status=todo_status,
-                todo_status=todo_status,
-                execute_ids=execute_names,
-                create_at=todo.createAt,
-                update_at=todo.updateAt,
+                todoStatus=todo_status,
+                executeIds=execute_names,
+                createAt=todo.createAt,
+                updateAt=todo.updateAt,
             )
             data.append(todo_response)
 

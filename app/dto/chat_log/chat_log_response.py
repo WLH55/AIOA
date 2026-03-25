@@ -13,15 +13,15 @@ class ChatLogResponse(BaseModel):
     """
 
     id: str = Field(..., description="记录ID")
-    conversation_id: str = Field(..., description="会话ID")
-    send_id: str = Field(..., description="发送者用户ID")
-    send_name: Optional[str] = Field(None, description="发送者用户名")
-    recv_id: Optional[str] = Field(None, description="接收者用户ID")
-    recv_name: Optional[str] = Field(None, description="接收者用户名")
-    chat_type: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊)")
-    msg_content: str = Field(..., description="消息内容")
-    send_time: Optional[int] = Field(None, description="发送时间戳")
-    create_at: Optional[int] = Field(None, description="创建时间戳")
+    conversationId: str = Field(..., description="会话ID")
+    sendId: str = Field(..., description="发送者用户ID")
+    sendName: Optional[str] = Field(None, description="发送者用户名")
+    recvId: Optional[str] = Field(None, description="接收者用户ID")
+    recvName: Optional[str] = Field(None, description="接收者用户名")
+    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊)")
+    msgContent: str = Field(..., description="消息内容")
+    sendTime: Optional[int] = Field(None, description="发送时间戳")
+    createAt: Optional[int] = Field(None, description="创建时间戳")
 
 
 class ChatLogListResponse(BaseModel):

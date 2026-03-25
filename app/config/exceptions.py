@@ -4,7 +4,9 @@
 import logging
 from typing import Optional
 from fastapi import Request, status
+from fastapi.exceptions import RequestValidationError
 from starlette.responses import JSONResponse
+from pydantic import ValidationError
 
 from app.config.schemas import ApiResponse, ResponseCode
 
@@ -122,8 +124,41 @@ async def not_found_exception_handler(
     )
 
 
+async def pydantic_validation_exception_handler(
+    request: Request,
+    exc: RequestValidationError
+) -> JSONResponse:
+    """
+    处理 Pydantic/FastAPI 请求验证异常
+
+    当请求参数（路径参数、查询参数、请求体）不符合 Pydantic 模型定义时触发
+    """
+    # 提取第一个错误信息作为主要错误消息
+    errors = exc.errors()
+    if errors:
+        first_error = errors[0]
+        msg = first_error.get("msg", "参数验证失败")
+        # 移除类型前缀（如 "value_error, "）
+        if ", " in msg:
+            msg = msg.split(", ", 1)[1] if ", " in msg else msg
+    else:
+        msg = "请求参数验证失败"
+
+    _log_exception(request, exc, level="WARNING")
+
+    return JSONResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=ApiResponse.error(
+            code=ResponseCode.BAD_REQUEST,
+            message=msg,
+            data=None
+        ).model_dump()
+    )
+
+
 def register_exception_handlers(app) -> None:
     """注册全局异常处理器到 FastAPI 应用"""
     app.add_exception_handler(BusinessValidationException, validation_exception_handler)
     app.add_exception_handler(ResourceNotFoundException, not_found_exception_handler)
+    app.add_exception_handler(RequestValidationError, pydantic_validation_exception_handler)
     app.add_exception_handler(Exception, general_exception_handler)

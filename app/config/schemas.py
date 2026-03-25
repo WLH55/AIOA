@@ -11,18 +11,18 @@ class ApiResponse(BaseModel, Generic[T]):
     """统一 API 响应格式"""
 
     code: int = Field(200, description="响应码")
-    message: str = Field("success", description="响应消息")
+    msg: str = Field("success", description="响应消息")
     data: Optional[T] = Field(None, description="响应数据")
 
     @classmethod
     def success(cls, data: Any = None, message: str = "success") -> "ApiResponse[T]":
         """成功响应"""
-        return cls(code=200, message=message, data=data)
+        return cls(code=200, msg=message, data=data)
 
     @classmethod
     def error(cls, code: int, message: str, data: Any = None) -> "ApiResponse[T]":
         """错误响应"""
-        return cls(code=code, message=message, data=data)
+        return cls(code=code, msg=message, data=data)
 
 
 class PageResponse(BaseModel, Generic[T]):

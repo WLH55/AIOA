@@ -123,7 +123,7 @@ class TodoRepository:
         """
         skip = (page - 1) * page_size
         # 查询 executes 数组中包含指定用户ID的待办
-        query = Todo.find(Todo.executes.user_id == user_id)
+        query = Todo.find(Todo.executes.userId == user_id)
         total = await query.count()
         todos = await query.skip(skip).limit(page_size).sort("-createAt").to_list()
         return todos, total
@@ -152,7 +152,7 @@ class TodoRepository:
         skip = (page - 1) * page_size
         # 查询 executes 数组中包含指定用户ID且在时间范围内的待办
         query = Todo.find(
-            Todo.executes.user_id == user_id,
+            Todo.executes.userId == user_id,
             Todo.createAt >= start_time,
             Todo.createAt <= end_time
         )

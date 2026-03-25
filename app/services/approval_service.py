@@ -77,8 +77,8 @@ class ApprovalService:
             raise ResourceNotFoundException("申请人信息不存在")
 
         user_info = ApproverResponse(
-            user_id=applicant.id,
-            user_name=applicant.name,
+            userId=str(applicant.id),
+            userName=applicant.name,
         )
 
         # 获取当前审批人信息
@@ -87,8 +87,8 @@ class ApprovalService:
             current_approver = user_map.get(approval.approvalId)
             if current_approver:
                 approver_info = ApproverResponse(
-                    user_id=current_approver.id,
-                    user_name=current_approver.name,
+                    userId=str(current_approver.id),
+                    userName=current_approver.name,
                 )
 
         # 构建审批人列表
@@ -97,8 +97,8 @@ class ApprovalService:
             for approver in approval.approvers:
                 user = user_map.get(approver.userId)
                 approvers.append(ApproverResponse(
-                    user_id=approver.userId,
-                    user_name=user.name if user else "",
+                    userId=approver.userId,
+                    userName=user.name if user else "",
                     status=approver.status,
                     reason=approver.reason,
                 ))
@@ -109,8 +109,8 @@ class ApprovalService:
             for copy_person in approval.copyPersons:
                 user = user_map.get(copy_person.userId)
                 copy_persons.append(ApproverResponse(
-                    user_id=copy_person.userId,
-                    user_name=user.name if user else "",
+                    userId=copy_person.userId,
+                    userName=user.name if user else "",
                 ))
 
         # 构建多态详情
@@ -118,18 +118,18 @@ class ApprovalService:
         if approval.leave:
             leave_resp = LeaveResponse(
                 type=approval.leave.type,
-                start_time=approval.leave.startTime,
-                end_time=approval.leave.endTime,
+                startTime=approval.leave.startTime,
+                endTime=approval.leave.endTime,
                 reason=approval.leave.reason,
-                time_type=approval.leave.timeType,
+                timeType=approval.leave.timeType,
                 duration=approval.leave.duration,
             )
 
         go_out_resp = None
         if approval.goOut:
             go_out_resp = GoOutResponse(
-                start_time=approval.goOut.startTime,
-                end_time=approval.goOut.endTime,
+                startTime=approval.goOut.startTime,
+                endTime=approval.goOut.endTime,
                 duration=approval.goOut.duration,
                 reason=approval.goOut.reason,
             )
@@ -222,12 +222,12 @@ class ApprovalService:
             ResourceNotFoundException: 审批记录不存在
             BusinessValidationException: 权限错误
         """
-        logger.info(f"处理审批: approval_id={request.approval_id}, status={request.status}")
+        logger.info(f"处理审批: approval_id={request.approvalId}, status={request.status}")
 
         current_user_id = str(current_user.id)
 
         # 查询审批记录
-        approval = await ApprovalRepository.find_by_id(request.approval_id)
+        approval = await ApprovalRepository.find_by_id(request.approvalId)
         if not approval:
             raise ResourceNotFoundException("审批记录不存在")
 
@@ -238,7 +238,7 @@ class ApprovalService:
                 raise BusinessValidationException("只有申请人才能撤销审批")
             approval.status = ApprovalStatus.CANCEL.value
             await ApprovalRepository.update(approval)
-            logger.info(f"撤销审批成功: id={request.approval_id}")
+            logger.info(f"撤销审批成功: id={request.approvalId}")
             return
 
         # 验证当前用户是否为当前审批人
@@ -289,7 +289,7 @@ class ApprovalService:
                         approval.finishYeas = dt.year
 
         await ApprovalRepository.update(approval)
-        logger.info(f"处理审批成功: id={request.approval_id}, status={request.status}")
+        logger.info(f"处理审批成功: id={request.approvalId}, status={request.status}")
 
     @staticmethod
     async def list(request: ApprovalListRequest, current_user: User) -> ApprovalListResponse:
@@ -328,18 +328,18 @@ class ApprovalService:
             if approval.leave:
                 leave_resp = LeaveResponse(
                     type=approval.leave.type,
-                    start_time=approval.leave.startTime,
-                    end_time=approval.leave.endTime,
+                    startTime=approval.leave.startTime,
+                    endTime=approval.leave.endTime,
                     reason=approval.leave.reason,
-                    time_type=approval.leave.timeType,
+                    timeType=approval.leave.timeType,
                     duration=approval.leave.duration,
                 )
 
             go_out_resp = None
             if approval.goOut:
                 go_out_resp = GoOutResponse(
-                    start_time=approval.goOut.startTime,
-                    end_time=approval.goOut.endTime,
+                    startTime=approval.goOut.startTime,
+                    endTime=approval.goOut.endTime,
                     duration=approval.goOut.duration,
                     reason=approval.goOut.reason,
                 )
@@ -381,45 +381,45 @@ class ApprovalService:
         if approval_type == ApprovalType.LEAVE and request.leave:
             leave = request.leave
             # 计算时长
-            if leave.time_type == 1:  # 小时
-                duration = (leave.end_time - leave.start_time) / 3600.0
+            if leave.timeType == 1:  # 小时
+                duration = (leave.endTime - leave.startTime) / 3600.0
             else:  # 天
-                duration = (leave.end_time - leave.start_time) / 86400.0
+                duration = (leave.endTime - leave.startTime) / 86400.0
 
             approval.leave = Leave(
                 type=leave.type,
-                startTime=leave.start_time,
-                endTime=leave.end_time,
+                startTime=leave.startTime,
+                endTime=leave.endTime,
                 reason=leave.reason,
-                timeType=leave.time_type,
+                timeType=leave.timeType,
                 duration=duration,
             )
 
             leave_type = LeaveType(leave.type)
-            abstract = f"【{leave_type.description}】: 【{ApprovalService._format_timestamp(leave.start_time)}】-【{ApprovalService._format_timestamp(leave.end_time)}】"
+            abstract = f"【{leave_type.description}】: 【{ApprovalService._format_timestamp(leave.startTime)}】-【{ApprovalService._format_timestamp(leave.endTime)}】"
             approval.reason = leave.reason
 
-        elif approval_type == ApprovalType.GO_OUT and request.go_out:
-            go_out = request.go_out
-            duration = (go_out.end_time - go_out.start_time) / 3600.0
+        elif approval_type == ApprovalType.GO_OUT and request.goOut:
+            go_out = request.goOut
+            duration = (go_out.endTime - go_out.startTime) / 3600.0
 
             approval.goOut = GoOut(
-                startTime=go_out.start_time,
-                endTime=go_out.end_time,
+                startTime=go_out.startTime,
+                endTime=go_out.endTime,
                 duration=duration,
                 reason=go_out.reason,
             )
 
-            abstract = f"【{ApprovalService._format_timestamp(go_out.start_time)}】-【{ApprovalService._format_timestamp(go_out.end_time)}】"
+            abstract = f"【{ApprovalService._format_timestamp(go_out.startTime)}】-【{ApprovalService._format_timestamp(go_out.endTime)}】"
             approval.reason = go_out.reason
 
-        elif approval_type == ApprovalType.MAKE_CARD and request.make_card:
-            make_card = request.make_card
+        elif approval_type == ApprovalType.MAKE_CARD and request.makeCard:
+            make_card = request.makeCard
             approval.makeCard = MakeCard(
                 date=make_card.date,
                 reason=make_card.reason,
                 day=make_card.day,
-                checkType=make_card.check_type,
+                checkType=make_card.checkType,
             )
 
             abstract = f"【{ApprovalService._format_timestamp(make_card.date)}】【{make_card.reason}】"

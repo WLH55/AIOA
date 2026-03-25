@@ -88,8 +88,8 @@ async def authenticate_websocket(websocket: WebSocket) -> Optional[User]:
         await websocket.close(code=WSErrorCode.USER_NOT_FOUND, reason="User not found")
         return None
 
-    # 验证用户状态
-    if user.status != "active":
+    # 验证用户状态 (0=正常, 1=禁用)
+    if user.status != 0:
         await websocket.close(code=WSErrorCode.USER_INACTIVE, reason="User is inactive")
         return None
 
@@ -120,7 +120,7 @@ async def websocket_chat(websocket: WebSocket):
         return
 
     # 建立连接
-    session_id = await ws_manager.connect(websocket, str(user.id), user.username)
+    session_id = await ws_manager.connect(websocket, str(user.id), user.name)
 
     try:
         # 消息循环
@@ -129,6 +129,12 @@ async def websocket_chat(websocket: WebSocket):
             try:
                 data = await websocket.receive_json()
             except Exception as e:
+                # 连接已断开，跳出循环
+                error_msg = str(e).lower()
+                logger.debug(f"接收异常: {error_msg}")  # 调试日志
+                if any(keyword in error_msg for keyword in ["disconnect", "closed", "not connected"]):
+                    logger.info(f"连接已断开: {e}")
+                    break
                 logger.warning(f"接收消息失败: {e}")
                 continue
 

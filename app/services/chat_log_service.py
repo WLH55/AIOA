@@ -55,15 +55,15 @@ class ChatLogService:
 
         return ChatLogResponse(
             id=str(chat_log.id),
-            conversation_id=chat_log.conversationId,
-            send_id=chat_log.sendId,
-            send_name=send_name,
-            recv_id=chat_log.recvId,
-            recv_name=recv_name,
-            chat_type=chat_log.chatType,
-            msg_content=chat_log.msgContent,
-            send_time=chat_log.sendTime,
-            create_at=chat_log.createAt,
+            conversationId=chat_log.conversationId,
+            sendId=chat_log.sendId,
+            sendName=send_name,
+            recvId=chat_log.recvId,
+            recvName=recv_name,
+            chatType=chat_log.chatType,
+            msgContent=chat_log.msgContent,
+            sendTime=chat_log.sendTime,
+            createAt=chat_log.createAt,
         )
 
     @staticmethod
@@ -77,16 +77,16 @@ class ChatLogService:
         Returns:
             创建的聊天记录ID
         """
-        logger.info(f"创建聊天记录: conversationId={request.conversation_id}")
+        logger.info(f"创建聊天记录: conversationId={request.conversationId}")
 
         current_time = int(time.time() * 1000)
 
         chat_log = ChatLog(
-            conversationId=request.conversation_id,
-            sendId=request.send_id,
-            recvId=request.recv_id,
-            chatType=request.chat_type,
-            msgContent=request.msg_content,
+            conversationId=request.conversationId,
+            sendId=request.sendId,
+            recvId=request.recvId,
+            chatType=request.chatType,
+            msgContent=request.msgContent,
             sendTime=current_time,
         )
 
@@ -109,11 +109,11 @@ class ChatLogService:
         logger.info(f"聊天记录列表查询: page={request.page}, count={request.count}")
 
         chat_logs, total = await ChatLogRepository.find_by_conditions(
-            conversation_id=request.conversation_id,
-            send_id=request.send_id,
-            chat_type=request.chat_type,
-            start_time=request.start_time,
-            end_time=request.end_time,
+            conversation_id=request.conversationId,
+            send_id=request.sendId,
+            chat_type=request.chatType,
+            start_time=request.startTime,
+            end_time=request.endTime,
             page=request.page,
             page_size=request.count,
         )
@@ -142,15 +142,15 @@ class ChatLogService:
 
             data.append(ChatLogResponse(
                 id=str(chat_log.id),
-                conversation_id=chat_log.conversationId,
-                send_id=chat_log.sendId,
-                send_name=send_name,
-                recv_id=chat_log.recvId,
-                recv_name=recv_name,
-                chat_type=chat_log.chatType,
-                msg_content=chat_log.msgContent,
-                send_time=chat_log.sendTime,
-                create_at=chat_log.createAt,
+                conversationId=chat_log.conversationId,
+                sendId=chat_log.sendId,
+                sendName=send_name,
+                recvId=chat_log.recvId,
+                recvName=recv_name,
+                chatType=chat_log.chatType,
+                msgContent=chat_log.msgContent,
+                sendTime=chat_log.sendTime,
+                createAt=chat_log.createAt,
             ))
 
         return ChatLogListResponse(count=total, data=data)
@@ -193,14 +193,14 @@ class ChatLogService:
 
             data.append(ChatLogResponse(
                 id=str(chat_log.id),
-                conversation_id=chat_log.conversationId,
-                send_id=chat_log.sendId,
-                send_name=send_name,
-                recv_id=chat_log.recvId,
-                chat_type=chat_log.chatType,
-                msg_content=chat_log.msgContent,
-                send_time=chat_log.sendTime,
-                create_at=chat_log.createAt,
+                conversationId=chat_log.conversationId,
+                sendId=chat_log.sendId,
+                sendName=send_name,
+                recvId=chat_log.recvId,
+                chatType=chat_log.chatType,
+                msgContent=chat_log.msgContent,
+                sendTime=chat_log.sendTime,
+                createAt=chat_log.createAt,
             ))
 
         return ChatLogListResponse(count=total, data=data)

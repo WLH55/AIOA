@@ -31,6 +31,8 @@ async def login(request: dict) -> ApiResponse[dict]:
 
     注意: 此接口复用 AuthService 的登录逻辑
     实际登录逻辑在 /auth/login 中实现
+
+    返回格式兼容前端期望的数据结构
     """
     # 登录逻辑已在 auth_service.py 中实现
     # 此接口保留以兼容 Java 版本的 API 路径
@@ -39,7 +41,18 @@ async def login(request: dict) -> ApiResponse[dict]:
 
     login_request = LoginRequest(name=request.get("name"), password=request.get("password"))
     response = await AuthService.login(login_request)
-    return ApiResponse.success(data=response.model_dump(), message="登录成功")
+
+    # 转换为前端期望的格式（已经是扁平化结构）
+    login_data = {
+        "token": response.token,
+        "id": response.id,
+        "name": response.name,
+        "status": 1 if response.status == 0 else 0,  # 前端: 1=启用, 后端: 0=启用
+        "accessExpire": response.accessExpire,
+        "refreshAfter": response.refreshAfter
+    }
+
+    return ApiResponse.success(data=login_data, message="登录成功")
 
 
 @router.get(

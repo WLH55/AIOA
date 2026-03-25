@@ -13,10 +13,10 @@ class UserTodoResponse(BaseModel):
     """
 
     id: Optional[str] = Field(None, description="唯一标识")
-    user_id: str = Field(..., description="用户ID")
-    user_name: str = Field(..., description="用户名")
-    todo_id: Optional[str] = Field(None, description="待办ID")
-    todo_status: int = Field(default=1, description="待办状态")
+    userId: str = Field(..., description="用户ID")
+    userName: str = Field(..., description="用户名")
+    todoId: Optional[str] = Field(None, description="待办ID")
+    todoStatus: int = Field(default=1, description="待办状态")
 
 
 class TodoRecordResponse(BaseModel):
@@ -24,12 +24,12 @@ class TodoRecordResponse(BaseModel):
     待办操作记录响应 DTO
     """
 
-    todo_id: Optional[str] = Field(None, description="待办ID")
-    user_id: str = Field(..., description="操作用户ID")
-    user_name: str = Field(..., description="操作用户名")
+    todoId: Optional[str] = Field(None, description="待办ID")
+    userId: str = Field(..., description="操作用户ID")
+    userName: str = Field(..., description="操作用户名")
     content: str = Field(..., description="操作内容")
     image: Optional[str] = Field(None, description="操作相关图片")
-    create_at: Optional[int] = Field(None, description="操作时间戳")
+    createAt: Optional[int] = Field(None, description="操作时间戳")
 
 
 class TodoResponse(BaseModel):
@@ -40,16 +40,16 @@ class TodoResponse(BaseModel):
     """
 
     id: str = Field(..., description="待办ID")
-    creator_id: str = Field(..., description="创建者ID")
-    creator_name: str = Field(..., description="创建者名称")
+    creatorId: str = Field(..., description="创建者ID")
+    creatorName: str = Field(..., description="创建者名称")
     title: str = Field(..., description="待办标题")
-    deadline_at: Optional[int] = Field(None, description="截止时间戳")
+    deadlineAt: Optional[int] = Field(None, description="截止时间戳")
     desc: Optional[str] = Field(None, description="待办描述")
     status: int = Field(..., description="待办状态")
-    todo_status: int = Field(..., description="待办状态")
-    execute_ids: List[str] = Field(default_factory=list, description="执行人名称列表")
-    create_at: Optional[int] = Field(None, description="创建时间戳")
-    update_at: Optional[int] = Field(None, description="更新时间戳")
+    todoStatus: int = Field(..., description="待办状态")
+    executeIds: List[str] = Field(default_factory=list, description="执行人ID列表")
+    createAt: Optional[int] = Field(None, description="创建时间戳")
+    updateAt: Optional[int] = Field(None, description="更新时间戳")
 
 
 class TodoInfoResponse(BaseModel):
@@ -60,14 +60,14 @@ class TodoInfoResponse(BaseModel):
     """
 
     id: str = Field(..., description="待办ID")
-    creator_id: str = Field(..., description="创建者ID")
-    creator_name: str = Field(..., description="创建者名称")
+    creatorId: str = Field(..., description="创建者ID")
+    creatorName: str = Field(..., description="创建者名称")
     title: str = Field(..., description="待办标题")
-    deadline_at: Optional[int] = Field(None, description="截止时间戳")
+    deadlineAt: Optional[int] = Field(None, description="截止时间戳")
     desc: Optional[str] = Field(None, description="待办描述")
     status: int = Field(..., description="待办状态")
-    todo_status: int = Field(..., description="待办状态")
-    execute_ids: List[UserTodoResponse] = Field(default_factory=list, description="执行人列表")
+    todoStatus: int = Field(..., description="待办状态")
+    executeIds: List[UserTodoResponse] = Field(default_factory=list, description="执行人列表")
     records: List[TodoRecordResponse] = Field(default_factory=list, description="操作记录列表")
 
 

@@ -39,12 +39,12 @@ class Settings(BaseSettings):
     # ========== 应用基础配置 ==========
     APP_NAME: str = "FastAPI Application"
     APP_VERSION: str = "1.0.0"
-    API_PREFIX: str = "/api/v1"
+    API_PREFIX: str = "/v1"
     DEBUG: bool = False
 
     # ========== 服务器与 HTTP 配置 ==========
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
+    PORT: int = 8888
     HTTP_TIMEOUT: int = 30
 
     # ========== CORS 配置 ==========
