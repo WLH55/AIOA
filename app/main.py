@@ -21,6 +21,7 @@ from app.models.department import Department
 from app.models.department_user import DepartmentUser
 from app.models.chat_log import ChatLog
 from app.models.group import Group
+from app.models.unread_message import UnreadMessage
 
 # 导入路由
 from app.routers import auth_router, ws_router
@@ -30,6 +31,7 @@ from app.routers import approval as approval_router
 from app.routers import department as department_router
 from app.routers import chat_log as chat_log_router
 from app.routers import group as group_router
+from app.routers import unread as unread_router
 from app.services.ws_manager import ws_manager
 
 logger = logging.getLogger(__name__)
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI):
                 DepartmentUser,
                 ChatLog,
                 Group,
+                UnreadMessage,
             ],
         )
         logger.info(f"MongoDB 连接成功: {settings.MONGODB_DATABASE}")
@@ -139,6 +142,7 @@ def create_app() -> FastAPI:
     app.include_router(department_router.router, prefix=settings.API_PREFIX)
     app.include_router(chat_log_router.router, prefix=settings.API_PREFIX)
     app.include_router(group_router.router, prefix=settings.API_PREFIX)
+    app.include_router(unread_router.router, prefix=settings.API_PREFIX)
 
     # ========== 健康检查 ==========
     @app.get("/health")

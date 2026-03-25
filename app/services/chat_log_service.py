@@ -17,6 +17,10 @@ from app.dto.chat_log.chat_log_response import ChatLogResponse, ChatLogListRespo
 
 logger = logging.getLogger(__name__)
 
+# 系统消息的特殊发送者ID
+SYSTEM_SENDER_ID = "system"
+SYSTEM_SENDER_NAME = "系统"
+
 
 class ChatLogService:
     """
@@ -43,9 +47,12 @@ class ChatLogService:
         if not chat_log:
             raise ResourceNotFoundException("聊天记录不存在")
 
-        # 获取发送者名称
-        send_user = await UserRepository.find_by_id(chat_log.sendId)
-        send_name = send_user.name if send_user else ""
+        # 获取发送者名称（系统消息特殊处理）
+        if chat_log.sendId == SYSTEM_SENDER_ID:
+            send_name = SYSTEM_SENDER_NAME
+        else:
+            send_user = await UserRepository.find_by_id(chat_log.sendId)
+            send_name = send_user.name if send_user else ""
 
         # 获取接收者名称
         recv_name = ""
@@ -118,11 +125,12 @@ class ChatLogService:
             page_size=request.count,
         )
 
-        # 收集所有用户ID
+        # 收集所有用户ID（排除系统消息的特殊ID）
         user_ids: Set[str] = set()
         for chat_log in chat_logs:
-            user_ids.add(chat_log.sendId)
-            if chat_log.recvId:
+            if chat_log.sendId != SYSTEM_SENDER_ID:
+                user_ids.add(chat_log.sendId)
+            if chat_log.recvId and chat_log.recvId != SYSTEM_SENDER_ID:
                 user_ids.add(chat_log.recvId)
 
         # 批量查询用户信息
@@ -132,13 +140,20 @@ class ChatLogService:
         # 构建响应列表
         data: List[ChatLogResponse] = []
         for chat_log in chat_logs:
-            send_user = user_map.get(chat_log.sendId)
-            send_name = send_user.name if send_user else ""
+            # 系统消息特殊处理
+            if chat_log.sendId == SYSTEM_SENDER_ID:
+                send_name = SYSTEM_SENDER_NAME
+            else:
+                send_user = user_map.get(chat_log.sendId)
+                send_name = send_user.name if send_user else ""
 
             recv_name = ""
             if chat_log.recvId:
-                recv_user = user_map.get(chat_log.recvId)
-                recv_name = recv_user.name if recv_user else ""
+                if chat_log.recvId == SYSTEM_SENDER_ID:
+                    recv_name = SYSTEM_SENDER_NAME
+                else:
+                    recv_user = user_map.get(chat_log.recvId)
+                    recv_name = recv_user.name if recv_user else ""
 
             data.append(ChatLogResponse(
                 id=str(chat_log.id),
@@ -178,8 +193,11 @@ class ChatLogService:
             conversation_id, page, count
         )
 
-        # 收集所有用户ID
-        user_ids: Set[str] = {chat_log.sendId for chat_log in chat_logs}
+        # 收集所有用户ID（排除系统消息的特殊ID）
+        user_ids: Set[str] = set()
+        for chat_log in chat_logs:
+            if chat_log.sendId != SYSTEM_SENDER_ID:
+                user_ids.add(chat_log.sendId)
 
         # 批量查询用户信息
         users = await UserRepository.find_by_ids(list(user_ids))
@@ -188,8 +206,12 @@ class ChatLogService:
         # 构建响应列表
         data: List[ChatLogResponse] = []
         for chat_log in chat_logs:
-            send_user = user_map.get(chat_log.sendId)
-            send_name = send_user.name if send_user else ""
+            # 系统消息特殊处理
+            if chat_log.sendId == SYSTEM_SENDER_ID:
+                send_name = SYSTEM_SENDER_NAME
+            else:
+                send_user = user_map.get(chat_log.sendId)
+                send_name = send_user.name if send_user else ""
 
             data.append(ChatLogResponse(
                 id=str(chat_log.id),

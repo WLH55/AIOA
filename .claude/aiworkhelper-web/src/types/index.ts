@@ -198,6 +198,7 @@ export interface ChatResponse {
 
 // WebSocket消息类型
 export interface WsMessage {
+  type: 'chat' | 'pong' | 'close' | 'ping' // 消息类型
   conversationId: string // 群聊为群ID，私聊为两个用户ID组合
   recvId: string // 接收者ID（群聊时为空）
   sendId: string // 发送者ID
@@ -239,4 +240,63 @@ export interface KnowledgeChatRequest {
 export interface KnowledgeChatResponse {
   chatType: number
   data: string
+}
+
+// 群组相关类型
+export interface GroupListItem {
+  id: string
+  name: string
+  avatar?: string
+  ownerId: string
+  ownerName: string
+  memberCount: number
+  status: number // 1=正常，2=已解散
+  createAt: number
+}
+
+export interface GroupMember {
+  userId: string
+  userName: string
+  isOwner: boolean
+}
+
+export interface GroupInfo {
+  id: string
+  name: string
+  avatar?: string
+  ownerId: string
+  ownerName: string
+  memberIds: string[]
+  members: GroupMember[]
+  memberCount: number
+  status: number
+  createAt: number
+  updateAt: number
+}
+
+export interface GroupListParams extends PageParams {
+  // 可以扩展其他筛选参数
+}
+
+export interface CreateGroupRequest {
+  groupId: string
+  groupName: string
+  memberIds: string[]
+}
+
+// 未读消息相关类型
+export interface UnreadCountItem {
+  conversationId: string
+  conversationType: number // 1=群组，2=私聊
+  unreadCount: number
+  updateAt: number
+}
+
+export interface UnreadListResponse {
+  total: number
+  list: UnreadCountItem[]
+}
+
+export interface ClearUnreadRequest {
+  conversationId: string
 }

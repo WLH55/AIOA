@@ -47,6 +47,13 @@
                 <div class="conversation-name">{{ conv.name }}</div>
                 <div class="conversation-last">{{ conv.lastMessage || '暂无消息' }}</div>
               </div>
+              <!-- 未读消息徽章 -->
+              <el-badge
+                v-if="getUnreadCount(conv.id) > 0"
+                :value="getUnreadCount(conv.id)"
+                :max="99"
+                class="unread-badge"
+              />
             </div>
 
             <!-- 已有私聊会话列表（按最新消息时间排序） -->
@@ -65,6 +72,13 @@
                   {{ conv.lastMessage || '暂无消息' }}
                 </div>
               </div>
+              <!-- 未读消息徽章 -->
+              <el-badge
+                v-if="getUnreadCount(conv.id) > 0"
+                :value="getUnreadCount(conv.id)"
+                :max="99"
+                class="unread-badge"
+              />
             </div>
 
             <!-- 没有会话的其他用户 -->
@@ -244,7 +258,7 @@
 import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus, Picture, Loading, Check } from '@element-plus/icons-vue'
-import { chat, createGroup } from '@/api/chat'
+import { chat, createGroup, getChatHistory, getGroupList, getGroupInfo, inviteGroupMembers, removeGroupMember, exitGroup, updateGroup, dismissGroup, getUnreadList, clearUnread } from '@/api/chat'
 import { uploadFile } from '@/api/upload'
 import { getUserList } from '@/api/user'
 import { getWebSocket, releaseWebSocket, WebSocketClient } from '@/utils/websocket'
@@ -279,6 +293,9 @@ const messages = ref<Message[]>([])
 const inputMessage = ref('')
 const sending = ref(false)
 const aiLoading = ref(false)
+
+// 未读消息计数状态
+const unreadCounts = reactive<Record<string, number>>({})
 
 // @ 提及功能相关
 const showMentionList = ref(false)
@@ -755,6 +772,13 @@ const handleReceiveMessage = (wsMessage: WsMessage) => {
     if (conv) {
       conv.lastMessage = message.contentType === 1 ? message.content : '[图片]'
     }
+    // 如果当前不在该会话，增加未读计数
+    if (activeConversation.value !== convId) {
+      incrementUnreadCount(convId, 1)
+      console.log('[接收消息-群聊] 不在当前会话，增加未读计数')
+    }
+
+
 
     // 如果当前在该会话，更新显示列���并滚动
     if (activeConversation.value === convId) {
@@ -854,6 +878,13 @@ const handleReceiveMessage = (wsMessage: WsMessage) => {
       conv.lastMessage = message.contentType === 1 ? message.content : '[图片]'
       console.log('[接收消息-私聊] 更新已有私聊会话:', conv)
     }
+
+    // 如果当前不在该会话，增加未读计数
+    if (activeConversation.value !== conv.id) {
+      incrementUnreadCount(conv.id, 1)
+      console.log('[接收消息-私聊] 不在当前会话，增加未读计数')
+    }
+
 
     // 如果当前在该会话，更新消息列表并滚动
     if (activeConversation.value === conv.id) {
@@ -1408,9 +1439,14 @@ const handleUploadImage = async (file: File) => {
 }
 
 // 切换会话
-const switchConversation = (conv: Conversation) => {
+const switchConversation = async (conv: Conversation) => {
   activeConversation.value = conv.id
   currentChatType.value = conv.type
+
+  // 切换到私聊或群组时，清除未读计数
+  if (conv.type === 'private' || conv.type === 'group') {
+    await clearConversationUnread(conv.id)
+  }
 
   // 加载该会话的历史消息
   messages.value = conversationMessages[conv.id] || []
@@ -1583,6 +1619,56 @@ const createGroupChat = async () => {
   }
 }
 
+// ========== 未读消息相关函数 ==========
+
+/**
+ * 获取指定会话的未读数量
+ */
+const getUnreadCount = (conversationId: string): number => {
+  return unreadCounts[conversationId] || 0
+}
+
+/**
+ * 加载未读消息列表
+ */
+const loadUnreadList = async () => {
+  try {
+    const res = await getUnreadList()
+    if (res.code === 200 && res.data) {
+      res.data.list.forEach(item => {
+        unreadCounts[item.conversationId] = item.unreadCount
+      })
+      console.log('[加载未读] 未读列表加载成功:', res.data.list)
+    }
+  } catch (error) {
+    console.error('[加载未读] 失败:', error)
+  }
+}
+
+/**
+ * 清除会话未读计数
+ */
+const clearConversationUnread = async (conversationId: string) => {
+  if (getUnreadCount(conversationId) > 0) {
+    try {
+      await clearUnread({ conversationId })
+      unreadCounts[conversationId] = 0
+      console.log('[清除未读] 会话:', conversationId)
+    } catch (error) {
+      console.error('[清除未读] 失败:', error)
+    }
+  }
+}
+
+/**
+ * 增加会话未读计数（内部使用）
+ */
+const incrementUnreadCount = (conversationId: string, delta: number = 1) => {
+  const current = unreadCounts[conversationId] || 0
+  unreadCounts[conversationId] = Math.max(0, current + delta)
+  console.log('[增加未读] 会话:', conversationId, '当前未读数:', unreadCounts[conversationId])
+}
+
 // 滚动到底部
 const scrollToBottom = () => {
   nextTick(() => {
@@ -1595,6 +1681,8 @@ const scrollToBottom = () => {
 onMounted(() => {
   // 加载用户列表
   loadUserList()
+  // 加载未读消息列表
+  loadUnreadList()
   // 自动连接 WebSocket
   initWebSocket()
   // 默认显示AI对话
@@ -1912,5 +2000,24 @@ onBeforeUnmount(() => {
   text-align: center;
   color: #909399;
   font-size: 13px;
+}
+
+/* 未读消息徽章样式 */
+.unread-badge {
+  margin-left: auto;
+}
+
+.unread-badge :deep(.el-badge__content) {
+  background-color: #F56C6C;
+  color: white;
+  min-width: 16px;
+  height: 16px;
+  line-height: 14px;
+  font-size: 12px;
+  font-weight: bold;
+  padding: 1px 6px;
+  border-radius: 10px;
+  border: 2px solid white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 </style>

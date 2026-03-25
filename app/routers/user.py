@@ -47,7 +47,7 @@ async def login(request: dict) -> ApiResponse[dict]:
         "token": response.token,
         "id": response.id,
         "name": response.name,
-        "status": 1 if response.status == 0 else 0,  # 前端: 1=启用, 后端: 0=启用
+        "status": response.status,  # 1=启用，0=禁用（前后端统一）
         "accessExpire": response.accessExpire,
         "refreshAfter": response.refreshAfter
     }

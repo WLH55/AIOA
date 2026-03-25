@@ -27,7 +27,7 @@ class User(Document):
     password: str = Field(..., description="密码(BCrypt加密)")
 
     # 状态与权限
-    status: int = Field(default=0, description="状态(0-正常, 1-禁用)")
+    status: int = Field(default=1, description="状态(1-启用, 0-禁用)")
     isAdmin: bool = Field(default=False, description="是否为管理员")
 
     # 时间戳

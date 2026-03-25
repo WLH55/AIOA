@@ -91,11 +91,11 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # 验证用户状态（0-正常，1-禁用）
-    if user.status != 0:
+    # 验证用户状态（1=启用，0=禁用）
+    if user.status == 0:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="User is inactive or suspended",
+            detail="用户已被禁用",
         )
 
     return user

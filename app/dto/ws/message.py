@@ -65,6 +65,14 @@ class ChatMessage(BaseModel):
         return self.conversationId
 
 
+class PingMessage(BaseModel):
+    """
+    心跳请求消息
+    """
+    type: MessageType = Field(default=MessageType.PING, description="消息类型")
+    timestamp: Optional[str] = Field(None, description="时间戳")
+
+
 class PongMessage(BaseModel):
     """
     心跳响应消息

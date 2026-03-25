@@ -9,11 +9,13 @@ from typing import Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
 
+from app.config.exceptions import BusinessValidationException, ResourceNotFoundException
 from app.dto.ws.message import (
     MessageType,
     ChatMessage,
     PongMessage,
     CloseMessage,
+    PingMessage,
 )
 from app.dto.ws.response import ErrorResponse
 from app.models.user import User
@@ -88,8 +90,8 @@ async def authenticate_websocket(websocket: WebSocket) -> Optional[User]:
         await websocket.close(code=WSErrorCode.USER_NOT_FOUND, reason="User not found")
         return None
 
-    # 验证用户状态 (0=正常, 1=禁用)
-    if user.status != 0:
+    # 验证用户状态 (1=启用, 0=禁用)
+    if user.status == 0:
         await websocket.close(code=WSErrorCode.USER_INACTIVE, reason="User is inactive")
         return None
 
@@ -150,6 +152,9 @@ async def websocket_chat(websocket: WebSocket):
                 if msg_type == MessageType.CHAT:
                     await _handle_chat(websocket, session_id, user, data)
 
+                elif msg_type == MessageType.PING:
+                    await _handle_ping(websocket, session_id, data)
+
                 elif msg_type == MessageType.PONG:
                     await _handle_pong(websocket, session_id, data)
 
@@ -200,22 +205,45 @@ async def _handle_chat(
         await _send_error(websocket, WSErrorCode.INVALID_MESSAGE, f"Invalid chat message: {e}")
         return
 
-    conversation_id = message.get_or_create_conversation_id()
-
     logger.info(
         f"收到聊天消息: user_id={user.id}, "
-        f"conversation_id={conversation_id}, content_length={len(message.content)}"
+        f"chatType={message.chatType}, content_length={len(message.content)}"
     )
 
-    # TODO: 调用 AI 服务处理消息
-    # 当前返回模拟响应
-    await ws_manager.send_to_user(str(user.id), {
-        "type": MessageType.MESSAGE,
-        "content": f"收到您的消息：{message.content}",
-        "conversation_id": conversation_id,
-        "message_id": f"msg_{session_id[:8]}",
-        "is_final": True,
-    })
+    # 调用 ChatService 处理消息
+    try:
+        from app.services.chat_service import ChatService
+
+        response = await ChatService.handle_message(message, user)
+
+        # 发送响应给发送者
+        await ws_manager.send_to_user(str(user.id), response)
+
+    except BusinessValidationException as e:
+        await _send_error(websocket, 4001, str(e))
+    except ResourceNotFoundException as e:
+        await _send_error(websocket, 4003, str(e))
+    except Exception as e:
+        logger.error(f"处理聊天消息异常: {e}")
+        await _send_error(websocket, 5000, f"Internal error: {str(e)}")
+
+
+async def _handle_ping(
+    websocket: WebSocket,
+    session_id: str,
+    data: dict
+) -> None:
+    """
+    处理心跳请求
+
+    Args:
+        websocket: WebSocket 连接对象
+        session_id: 会话 ID
+        data: 消息数据
+    """
+    # 更新心跳时间戳
+    await ws_manager.handle_pong(session_id)
+    logger.debug(f"收到心跳请求: session_id={session_id}")
 
 
 async def _handle_pong(

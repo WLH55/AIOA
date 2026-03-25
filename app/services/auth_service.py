@@ -98,10 +98,10 @@ class AuthService:
             logger.warning(f"登录失败: 用户不存在 ({request.name})")
             raise BusinessValidationException("Invalid username or password")
 
-        # 验证用户状态（0-正常，1-禁用）
-        if user.status != 0:
+        # 验证用户状态（1-启用，0-禁用）
+        if user.status == 0:
             logger.warning(f"登录失败: 用户被禁用 ({user.name})")
-            raise BusinessValidationException("User is inactive or suspended")
+            raise BusinessValidationException("用户已被禁用，请联系管理员")
 
         # 验证密码
         if not verify_password(request.password, user.password):
@@ -173,9 +173,9 @@ class AuthService:
         if not user:
             raise BusinessValidationException("User not found")
 
-        # 验证用户状态（0-正常）
-        if user.status != 0:
-            raise BusinessValidationException("User is inactive or suspended")
+        # 验证用户状态（1=启用，0=禁用）
+        if user.status == 0:
+            raise BusinessValidationException("用户已被禁用")
 
         # 生成新的 Access Token
         access_token = create_access_token(str(user.id), user.name)

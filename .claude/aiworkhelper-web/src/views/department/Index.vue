@@ -11,6 +11,12 @@
         </div>
       </template>
 
+      <!-- 调试信息 -->
+      <div style="padding: 10px; background: #f0f0f0; margin-bottom: 10px; font-size: 12px;">
+        <strong>调试信息:</strong> 用户数量: {{ userList.length }} |
+        用户列表: {{ userList.map(u => u.name).join(', ') }}
+      </div>
+
       <!-- 部门树 -->
       <el-tree
         v-loading="loading"
@@ -119,6 +125,12 @@
 
     <!-- 删除员工对话框 -->
     <el-dialog v-model="removeUserDialogVisible" title="删除部门员工" width="500px">
+      <!-- 调试信息 -->
+      <div style="padding: 10px; background: #fff3cd; margin-bottom: 10px; font-size: 12px;">
+        <strong>调试:</strong> 部门用户ID: {{ currentDepartmentUserIds.join(', ') || '(空)' }} |
+        可删除用户数: {{ availableUsersForRemove.length }}
+      </div>
+
       <el-form label-width="100px">
         <el-form-item label="选择员工">
           <el-select v-model="selectedRemoveUserIds" placeholder="请选择要删除的员工" filterable multiple>
@@ -288,21 +300,29 @@ const loadData = async () => {
 
 const loadUsers = async () => {
   try {
+    console.log('[loadUsers] 开始加载用户列表...')
     const res = await getUserList({ page: 1, count: 100 })
-    console.log('getUserList response:', res)
+    console.log('[loadUsers] getUserList response:', res)
+    console.log('[loadUsers] response code:', res.code)
+    console.log('[loadUsers] response data:', res.data)
+
     if (res.code === 200) {
-      console.log('res.data:', res.data)
+      console.log('[loadUsers] res.data:', res.data)
+      console.log('[loadUsers] res.data.data:', res.data?.data)
+
       // 处理 res.data 为 null 或者 res.data.data 为 null/undefined 的情况
       if (res.data && res.data.data) {
         userList.value = res.data.data
-        console.log('userList.value after assignment:', userList.value)
+        console.log('[loadUsers] userList.value after assignment:', userList.value)
       } else {
         userList.value = []
-        console.log('用户列表数据为空，设置为空数组')
+        console.log('[loadUsers] 用户列表数据为空，设置为空数组. res.data:', res.data, ', res.data.data:', res.data?.data)
       }
+    } else {
+      console.log('[loadUsers] API 返回错误 code:', res.code, ', msg:', res.msg)
     }
   } catch (error) {
-    console.error('加载用户列表失败:', error)
+    console.error('[loadUsers] 加载用户列表失败:', error)
     ElMessage.error('加载用户列表失败')
   }
 }
@@ -336,8 +356,8 @@ const handleAddUser = (data: Department) => {
   currentDepId.value = data.id
   selectedAddUserIds.value = []
 
-  // 从部门数据中提取用户ID列表
-  currentDepartmentUserIds.value = data.users?.map(u => u.user) || []
+  // 从部门数据中提取用户ID列表（注意：字段名是 userId 不是 user）
+  currentDepartmentUserIds.value = data.users?.map(u => u.userId) || []
 
   addUserDialogVisible.value = true
 }
@@ -347,8 +367,8 @@ const handleRemoveUser = (data: Department) => {
   currentDepId.value = data.id
   selectedRemoveUserIds.value = []
 
-  // 从部门数据中提取用户ID列表
-  currentDepartmentUserIds.value = data.users?.map(u => u.user) || []
+  // 从部门数据中提取用户ID列表（注意：字段名是 userId 不是 user）
+  currentDepartmentUserIds.value = data.users?.map(u => u.userId) || []
 
   removeUserDialogVisible.value = true
 }
