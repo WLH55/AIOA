@@ -309,7 +309,7 @@ class WebSocketConnectionManager:
 
     async def start_heartbeat(self) -> None:
         """
-        启动心跳检测任务
+        启动心跳检测任务（只检测超时，不主动发送心跳）
         """
         if self._running:
             logger.warning("心跳检测任务已在运行")
@@ -319,7 +319,7 @@ class WebSocketConnectionManager:
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         logger.info(
             f"心跳检测任务启动: interval={self._heartbeat_interval}s, "
-            f"timeout={self._heartbeat_timeout}s"
+            f"timeout={self._heartbeat_timeout}s（被动接收客户端心跳）"
         )
 
     async def stop_heartbeat(self) -> None:
@@ -414,7 +414,7 @@ class WebSocketConnectionManager:
 
     async def _heartbeat_loop(self) -> None:
         """
-        心跳检测循环
+        心跳检测循环（只检测超时，不主动发送心跳）
         """
         while self._running:
             try:
@@ -423,27 +423,10 @@ class WebSocketConnectionManager:
                 # 检查超时连接
                 await self._check_timeout_connections()
 
-                # 发送心跳
-                await self._send_heartbeat()
-
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"心跳检测异常: {e}")
-
-    async def _send_heartbeat(self) -> None:
-        """
-        向所有连接发送心跳
-        """
-        for user_id, websocket in list(self._user_to_ws.items()):
-            try:
-                await self._send_to_websocket(websocket, {
-                    "type": "ping",
-                    "timestamp": datetime.utcnow().isoformat(),
-                })
-            except Exception:
-                # 发送失败，连接可能已断开
-                pass
 
     async def _check_timeout_connections(self) -> None:
         """
