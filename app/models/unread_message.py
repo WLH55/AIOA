@@ -4,6 +4,7 @@
 存储用户每个会话的未读消息数量
 """
 import logging
+import time
 from typing import Optional
 from pydantic import Field
 from beanie import Document, Indexed
@@ -23,6 +24,10 @@ class UnreadMessage(Document):
     unreadCount: int = Field(default=0, description="未读消息数量")
     lastReadTime: Optional[int] = Field(None, description="最后阅读时间戳（毫秒）")
 
+    # 时间戳
+    createAt: int = Field(default_factory=lambda: int(time.time() * 1000), description="创建时间戳")
+    updateAt: int = Field(default_factory=lambda: int(time.time() * 1000), description="更新时间戳")
+
     class Settings:
         name = "unread_message"
         indexes = [
@@ -30,3 +35,7 @@ class UnreadMessage(Document):
             "conversationId",
             "conversationType",
         ]
+
+    def update_timestamp(self) -> None:
+        """更新时间戳"""
+        self.updateAt = int(time.time() * 1000)

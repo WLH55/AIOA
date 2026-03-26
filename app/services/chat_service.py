@@ -134,9 +134,24 @@ class ChatService:
             ResourceNotFoundException: 接收者不存在
             BusinessValidationException: 业务验证失败
         """
+        logger.info(
+            f"[私聊处理] 开始处理: sendId={send_id}, recvId={recv_id}, "
+            f"conversationId={conversation_id}, content={content}"
+        )
         # 验证接收者
         if not recv_id:
             raise BusinessValidationException("私聊消息必须指定接收者")
+
+        # 验证用户 ID 长度（MongoDB ObjectId 应该是 24 位）
+        if len(recv_id) != 24:
+            logger.error(f"[私聊处理] 接收者ID长度异常: recvId={recv_id}, 长度={len(recv_id)}")
+            raise BusinessValidationException(f"接收者ID格式错误: {recv_id}")
+
+        if len(send_id) != 24:
+            logger.error(f"[私聊处理] 发送者ID长度异常: sendId={send_id}, 长度={len(send_id)}")
+            raise BusinessValidationException(f"发送者ID格式错误: {send_id}")
+
+        logger.info(f"[私聊处理] 发送者ID: sendId={send_id}, 接收者ID: recvId")
 
         # 查询接收者是否存在
         recv_user = await UserRepository.find_by_id(recv_id)
@@ -189,6 +204,11 @@ class ChatService:
             "contentType": content_type,
             "sendTime": current_time,
         }
+
+        logger.info(
+            f"构建私聊响应: sendId={send_id}, recvId={recv_id}, "
+            f"conversationId={conversation_id}, content={content}"
+        )
 
         # 如果接收者在线，转发消息
         if is_online:
