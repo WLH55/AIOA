@@ -1,7 +1,7 @@
 """
 聊天类型枚举
 
-1-群聊, 2-私聊
+1-群聊, 2-私聊, 3-AI消息
 """
 from enum import IntEnum
 
@@ -10,6 +10,7 @@ class ChatType(IntEnum):
     """聊天类型枚举"""
     GROUP = 1   # 群聊
     SINGLE = 2  # 私聊
+    AI = 3      # AI消息
 
     @classmethod
     def from_value(cls, value: int) -> "ChatType":

@@ -52,7 +52,7 @@ class ChatMessage(BaseModel):
     conversationId: str = Field(..., description="会话ID（群聊为群ID，私聊为两个用户ID组合）")
     recvId: Optional[str] = Field(None, description="接收者ID（群聊时为空）")
     sendId: str = Field(..., description="发送者ID")
-    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊)")
+    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊, 3-AI消息)")
     content: str = Field(..., description="消息内容")
     contentType: int = Field(default=1, description="内容类型(1-文字, 2-图片, 3-表情包)")
     systemType: Optional[str] = Field(None, description="系统消息类型(group_create/group_dismiss)")

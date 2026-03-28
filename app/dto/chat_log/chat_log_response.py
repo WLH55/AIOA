@@ -18,7 +18,7 @@ class ChatLogResponse(BaseModel):
     sendName: Optional[str] = Field(None, description="发送者用户名")
     recvId: Optional[str] = Field(None, description="接收者用户ID")
     recvName: Optional[str] = Field(None, description="接收者用户名")
-    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊)")
+    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊, 3-AI消息)")
     msgContent: str = Field(..., description="消息内容")
     sendTime: Optional[int] = Field(None, description="发送时间戳")
     createAt: Optional[int] = Field(None, description="创建时间戳")

@@ -17,7 +17,7 @@ class ChatLogRequest(BaseModel):
     conversationId: str = Field(..., description="会话ID")
     sendId: str = Field(..., description="发送者用户ID")
     recvId: Optional[str] = Field(None, description="接收者用户ID(群聊时为空)")
-    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊)")
+    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊, 3-AI消息)")
     msgContent: str = Field(..., description="消息内容")
 
 

@@ -30,7 +30,7 @@ class ChatLog(Document):
     recvId: Optional[str] = Field(None, description="接收者用户ID(群聊时为空)")
 
     # 消息信息
-    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊)")
+    chatType: int = Field(default=1, description="聊天类型(1-群聊, 2-私聊, 3-AI消息)")
     msgContent: str = Field(..., description="消息内容")
     sendTime: int = Field(default_factory=lambda: int(time.time() * 1000), description="发送时间戳")
 

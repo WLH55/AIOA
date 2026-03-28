@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # 聊天类型常量
 CHAT_TYPE_GROUP = 1  # 群聊
 CHAT_TYPE_PRIVATE = 2  # 私聊
+CHAT_TYPE_AI = 3  # AI消息
 
 # 内容类型常量
 CONTENT_TYPE_TEXT = 1  # 文字
