@@ -22,6 +22,13 @@ class MessageType(str, Enum):
     PING = "ping"
     MESSAGE = "message"
     ERROR = "error"
+    # AI Agent 消息类型
+    AI_CHAT = "ai_chat"
+    AI_CHUNK = "ai_chunk"
+    AI_COMPLETE = "ai_complete"
+    AI_TOOL_CALL = "ai_tool_call"
+    AI_TOOL_RESULT = "ai_tool_result"
+    AI_ERROR = "ai_error"
 
 
 class WebSocketMessage(BaseModel):

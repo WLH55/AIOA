@@ -17,6 +17,7 @@ from app.dto.ws.message import (
     CloseMessage,
     PingMessage,
 )
+from app.dto.ws.ai_message import AiChatMessage
 from app.dto.ws.response import ErrorResponse
 from app.models.user import User
 from app.repository.user_repository import UserRepository
@@ -151,6 +152,9 @@ async def websocket_chat(websocket: WebSocket):
             try:
                 if msg_type == MessageType.CHAT:
                     await _handle_chat(websocket, session_id, user, data)
+
+                elif msg_type == MessageType.AI_CHAT:
+                    await _handle_ai_chat(websocket, session_id, user, data)
 
                 elif msg_type == MessageType.PING:
                     await _handle_ping(websocket, session_id, data)
@@ -301,3 +305,45 @@ async def _send_error(websocket: WebSocket, code: int, message: str) -> None:
         await websocket.send_json(error.model_dump())
     except Exception:
         pass
+
+
+async def _handle_ai_chat(
+    websocket: WebSocket,
+    session_id: str,
+    user: User,
+    data: dict,
+) -> None:
+    """
+    处理 AI 对话消息
+
+    通过 create_task 异步派发，不阻塞正常聊天消息收发
+
+    Args:
+        websocket: WebSocket 连接对象
+        session_id: 会话 ID
+        user: 用户对象
+        data: 消息数据
+    """
+    try:
+        message = AiChatMessage(**data)
+    except Exception as e:
+        await _send_error(websocket, WSErrorCode.INVALID_MESSAGE, f"Invalid AI chat message: {e}")
+        return
+    if not message.content or not message.content.strip():
+        await _send_error(websocket, WSErrorCode.INVALID_MESSAGE, "消息内容不能为空")
+        return
+    logger.info(
+        f"收到 AI 对话消息: user_id={user.id}, "
+        f"conversationId={message.conversationId}, content_length={len(message.content)}"
+    )
+    # 异步派发 AI 处理任务，不阻塞主循环
+    from app.services.ai_chat_service import AiChatService
+    redis_client = getattr(websocket.app.state, "redis", None)
+    asyncio.create_task(
+        AiChatService.handle_ai_chat(
+            user=user,
+            conversation_id=message.conversationId,
+            content=message.content.strip(),
+            redis_client=redis_client,
+        )
+    )

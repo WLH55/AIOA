@@ -69,6 +69,16 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_DAYS: int = 7
     REFRESH_TOKEN_EXPIRE_DAYS: int = 30
 
+    # ========== AI Agent 配置 ==========
+    DEEPSEEK_API_KEY: str = ""
+    DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
+    DEEPSEEK_MODEL: str = "deepseek-chat"
+    AI_MEMORY_MAX_TOKEN_LIMIT: int = 2000
+    AI_MEMORY_REDIS_TTL: int = 86400
+    AI_CONVERSATION_MAX_COUNT: int = 50
+    AI_TIMEOUT: int = 120
+    AI_SUMMARY_MODEL: str = "deepseek-chat"
+
     # ========== 其他配置 ==========
 
 

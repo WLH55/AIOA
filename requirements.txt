@@ -24,6 +24,11 @@ python-jose[cryptography]>=3.3.0
 passlib[bcrypt]>=1.7.4
 bcrypt>=4.0.0,<5.0.0
 
+# AI Agent (LangChain + DeepSeek)
+langchain>=0.3.0
+langchain-openai>=0.3.0
+langchain-core>=0.3.0
+
 # 测试依赖
 pytest>=8.0.0
 pytest-asyncio>=0.24.0
