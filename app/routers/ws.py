@@ -324,6 +324,7 @@ async def _handle_ai_chat(
         user: 用户对象
         data: 消息数据
     """
+    from app.services.ai_chat_service import AiChatService
     try:
         message = AiChatMessage(**data)
     except Exception as e:
@@ -332,14 +333,22 @@ async def _handle_ai_chat(
     if not message.content or not message.content.strip():
         await _send_error(websocket, WSErrorCode.INVALID_MESSAGE, "消息内容不能为空")
         return
+    # 限制消息长度，防止恶意用户发送超大消息
+    if len(message.content) > 4000:
+        await _send_error(websocket, WSErrorCode.INVALID_MESSAGE, "消息内容过长，最多 4000 字符")
+        return
     logger.info(
         f"收到 AI 对话消息: user_id={user.id}, "
         f"conversationId={message.conversationId}, content_length={len(message.content)}"
     )
-    # 异步派发 AI 处理任务，不阻塞主循环
-    from app.services.ai_chat_service import AiChatService
+    # 检查 Redis 是否可用
     redis_client = getattr(websocket.app.state, "redis", None)
-    asyncio.create_task(
+    if redis_client is None:
+        await _send_error(websocket, 5000, "AI 服务暂时不可用，请稍后重试")
+        logger.error("Redis 未初始化，AI 对话功能不可用")
+        return
+    # 异步派发 AI 处理任务，不阻塞主循环
+    task = asyncio.create_task(
         AiChatService.handle_ai_chat(
             user=user,
             conversation_id=message.conversationId,
@@ -347,3 +356,12 @@ async def _handle_ai_chat(
             redis_client=redis_client,
         )
     )
+    # 添加异常处理回调，防止异常静默丢失
+    def _handle_task_exception(t):
+        try:
+            exc = t.exception()
+            if exc:
+                logger.error(f"AI 对话任务异常: {exc}", exc_info=exc)
+        except asyncio.CancelledError:
+            pass
+    task.add_done_callback(_handle_task_exception)

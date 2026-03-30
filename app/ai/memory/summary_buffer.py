@@ -22,7 +22,8 @@ class SummaryBuffer:
 
     管理 Redis 中的对话缓冲区，提供：
     - 对话缓冲的读写
-    - Token 估算（tokenCount = charCount * 1.5）
+    - 字符数估算（注意：配置项 AI_MEMORY_MAX_TOKEN_LIMIT 虽然命名为 token，
+                  但实际用于字符数限制，中文字符与 token 约为 1:1.5 关系）
     - 摘要触发判断
     """
 
@@ -34,7 +35,9 @@ class SummaryBuffer:
             redis_client: Redis 异步客户端
         """
         self._redis = redis_client
-        self._max_token_limit = settings.AI_MEMORY_MAX_TOKEN_LIMIT
+        # 注意：此配置项名为 MAX_TOKEN_LIMIT，但实际用于字符数限制
+        # 中文字符与 token 比例约为 1:1.5，2000 字符约等于 3000 token
+        self._max_char_limit = settings.AI_MEMORY_MAX_TOKEN_LIMIT
         self._redis_ttl = settings.AI_MEMORY_REDIS_TTL
 
     def _buffer_key(self, conversation_id: str) -> str:
@@ -102,7 +105,7 @@ class SummaryBuffer:
         Returns:
             是否需要触发摘要
         """
-        return char_count > self._max_token_limit
+        return char_count > self._max_char_limit
 
     async def get_buffer_messages(self, conversation_id: str) -> List[dict]:
         """

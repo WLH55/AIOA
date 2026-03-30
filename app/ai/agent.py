@@ -7,9 +7,8 @@ AI Agent 核心循环
 3. 如果 LLM 返回最终回答 -> 推送 ai_complete
 4. 超过最大轮次则终止
 """
-import json
 import logging
-from typing import List, Callable, Awaitable
+from typing import List, Callable, Awaitable, Tuple
 
 from langchain_core.messages import (
     SystemMessage,
@@ -20,10 +19,25 @@ from langchain_core.messages import (
 from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
-# 最大工具调用轮次
-MAX_TOOL_ROUNDS = 10
+# 最大工具调用轮次（可配置）
+MAX_TOOL_ROUNDS = getattr(settings, "AI_MAX_TOOL_ROUNDS", 10)
+
+# 用户消息最大长度
+MAX_MESSAGE_LENGTH = 4000
+
+# 流式输出分片大小
+CHUNK_SIZE = 10
+
+
+class ToolExecutionResult:
+    """工具执行结果"""
+    def __init__(self, success: bool, result: str):
+        self.success = success
+        self.result = result
 
 
 class AgentExecutor:
@@ -84,6 +98,10 @@ class AgentExecutor:
         Returns:
             AI 的完整响应文本
         """
+        # 消息长度验证
+        if len(user_message) > MAX_MESSAGE_LENGTH:
+            await self._on_error("MESSAGE_TOO_LONG", f"消息过长，最多 {MAX_MESSAGE_LENGTH} 字符")
+            return ""
         messages = self._build_messages(user_message)
         full_response = ""
         for round_num in range(MAX_TOOL_ROUNDS + 1):
@@ -103,22 +121,21 @@ class AgentExecutor:
                         # 通知客户端工具调用开始
                         await self._on_tool_call(tool_name, tool_args, "running")
                         # 执行工具
-                        result = await self._execute_tool(tool_name, tool_args)
+                        exec_result = await self._execute_tool(tool_name, tool_args)
                         # 通知客户端工具执行结果
-                        result_status = "success" if not result.startswith("工具执行错误") else "error"
-                        await self._on_tool_result(tool_name, result, result_status)
+                        result_status = "success" if exec_result.success else "error"
+                        await self._on_tool_result(tool_name, exec_result.result, result_status)
                         # 将结果回传给 LLM
-                        messages.append(ToolMessage(content=result, tool_call_id=tool_id))
+                        messages.append(ToolMessage(content=exec_result.result, tool_call_id=tool_id))
                 else:
                     # 没有工具调用，这是最终回答
                     full_response = response.content or ""
                     # 流式推送最终回答（按字符分片模拟流式效果）
                     if full_response:
                         chunk_index = 0
-                        chunk_size = 10
-                        for i in range(0, len(full_response), chunk_size):
+                        for i in range(0, len(full_response), CHUNK_SIZE):
                             chunk_index += 1
-                            await self._on_chunk(full_response[i:i + chunk_size], chunk_index)
+                            await self._on_chunk(full_response[i:i + CHUNK_SIZE], chunk_index)
                     await self._on_complete(full_response, self._conversation_id)
                     return full_response
             except Exception as e:
@@ -151,11 +168,15 @@ class AgentExecutor:
                 messages.append(HumanMessage(content=content))
             elif role == "assistant":
                 messages.append(AIMessage(content=content))
+            else:
+                # 非法角色记录警告但不中断
+                if role is not None:
+                    logger.warning(f"未知的消息角色: {role}, 已跳过")
         # 添加当前用户消息
         messages.append(HumanMessage(content=user_message))
         return messages
 
-    async def _execute_tool(self, tool_name: str, tool_args: dict) -> str:
+    async def _execute_tool(self, tool_name: str, tool_args: dict) -> ToolExecutionResult:
         """
         执行工具调用
 
@@ -164,17 +185,24 @@ class AgentExecutor:
             tool_args: 工具参数
 
         Returns:
-            工具执行结果文本
+            ToolExecutionResult 包含执行状态和结果
         """
         tool = self._tools.get(tool_name)
         if not tool:
-            return f"工具执行错误: 未找到工具 {tool_name}"
+            return ToolExecutionResult(False, f"未找到工具: {tool_name}")
         try:
+            # 参数基本验证：确保参数是字典
+            if not isinstance(tool_args, dict):
+                tool_args = {}
             if tool.coroutine:
                 result = await tool.coroutine(**tool_args)
             else:
                 result = tool.invoke(tool_args)
-            return str(result)
+            return ToolExecutionResult(True, str(result))
+        except TypeError as e:
+            # 参数类型错误
+            logger.error(f"工具参数错误: tool={tool_name}, args={tool_args}, error={e}")
+            return ToolExecutionResult(False, f"参数错误: {str(e)}")
         except Exception as e:
             logger.error(f"工具执行异常: tool={tool_name}, args={tool_args}, error={e}")
-            return f"工具执行错误: {str(e)}"
+            return ToolExecutionResult(False, f"执行错误: {str(e)}")

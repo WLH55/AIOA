@@ -8,8 +8,20 @@ import logging
 from langchain_openai import ChatOpenAI
 
 from app.config import settings
+from app.config.exceptions import BusinessValidationException
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_api_key() -> None:
+    """
+    验证 DeepSeek API Key 是否配置
+
+    Raises:
+        BusinessValidationException: API Key 未配置时抛出
+    """
+    if not settings.DEEPSEEK_API_KEY:
+        raise BusinessValidationException("DEEPSEEK_API_KEY 未配置，AI Agent 功能不可用")
 
 
 def get_chat_llm(streaming: bool = True) -> ChatOpenAI:
@@ -21,7 +33,11 @@ def get_chat_llm(streaming: bool = True) -> ChatOpenAI:
 
     Returns:
         ChatOpenAI 实例
+
+    Raises:
+        BusinessValidationException: API Key 未配置时抛出
     """
+    _validate_api_key()
     return ChatOpenAI(
         api_key=settings.DEEPSEEK_API_KEY,
         base_url=settings.DEEPSEEK_BASE_URL,
@@ -41,7 +57,11 @@ def get_summary_llm() -> ChatOpenAI:
 
     Returns:
         ChatOpenAI 实例
+
+    Raises:
+        BusinessValidationException: API Key 未配置时抛出
     """
+    _validate_api_key()
     return ChatOpenAI(
         api_key=settings.DEEPSEEK_API_KEY,
         base_url=settings.DEEPSEEK_BASE_URL,

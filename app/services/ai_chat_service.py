@@ -7,7 +7,7 @@ import logging
 import time
 from typing import Optional
 
-from langchain_openai import ChatOpenAI
+from redis.asyncio import Redis
 
 from app.ai.agent import AgentExecutor
 from app.ai.llm import get_chat_llm
@@ -42,7 +42,7 @@ class AiChatService:
         user: User,
         conversation_id: str,
         content: str,
-        redis_client,
+        redis_client: Optional[Redis],
     ) -> None:
         """
         处理 AI 对话消息（异步任务，不阻塞 WebSocket 主循环）
@@ -62,7 +62,7 @@ class AiChatService:
                 await _send_ai_error(user_id, conversation_id, "CONVERSATION_NOT_FOUND", "会话不存在或已删除")
                 return
             if conversation.userId != user_id:
-                await _send_ai_error(user_id, conversation_id, "CONVERSATION_NOT_FOUND", "无权访问该会话")
+                await _send_ai_error(user_id, conversation_id, "FORBIDDEN", "无权访问该会话")
                 return
             # 2. 保存用户消息到 ChatLog
             current_time = int(time.time() * 1000)
@@ -93,7 +93,9 @@ class AiChatService:
             # 9. 获取 LLM 实例
             llm = get_chat_llm(streaming=True)
             # 10. 创建并运行 Agent
-            full_response = ""
+            # 用于存储 AI 响应（由 on_complete 回调写入）
+            ai_response_holder = {"content": ""}
+
             async def on_chunk(chunk_content: str, index: int):
                 await ws_manager.send_to_user(user_id, {
                     "type": "ai_chunk",
@@ -121,8 +123,8 @@ class AiChatService:
                 })
 
             async def on_complete(complete_content: str, conv_id: str):
-                nonlocal full_response
-                full_response = complete_content
+                # 保存完整响应
+                ai_response_holder["content"] = complete_content
                 # 保存 AI 响应到 ChatLog
                 ai_chat_log = ChatLog(
                     conversationId=conv_id,
@@ -158,8 +160,8 @@ class AiChatService:
             )
             await executor.run(content)
             # 11. 添加 AI 响应到记忆缓冲
-            if full_response:
-                await memory.add_assistant_message(conversation_id, full_response)
+            if ai_response_holder["content"]:
+                await memory.add_assistant_message(conversation_id, ai_response_holder["content"])
         except Exception as e:
             logger.error(f"AI 对话处理异常: conversationId={conversation_id}, error={e}", exc_info=True)
             await _send_ai_error(user_id, conversation_id, "AI_SERVICE_ERROR", "AI 服务暂时不可用，请稍后重试")

@@ -78,6 +78,8 @@ class Settings(BaseSettings):
     AI_CONVERSATION_MAX_COUNT: int = 50
     AI_TIMEOUT: int = 120
     AI_SUMMARY_MODEL: str = "deepseek-chat"
+    AI_MAX_TOOL_ROUNDS: int = 10
+    AI_MAX_MESSAGE_LENGTH: int = 4000
 
     # ========== 其他配置 ==========
 

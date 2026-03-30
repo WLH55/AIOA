@@ -89,6 +89,12 @@ async def lifespan(app: FastAPI):
     await ws_manager.start_heartbeat()
     logger.info("WebSocket 心跳检测已启动")
 
+    # 验证 AI 配置
+    if not settings.DEEPSEEK_API_KEY:
+        logger.warning("DEEPSEEK_API_KEY 未配置，AI Agent 功能不可用")
+    else:
+        logger.info(f"AI Agent 配置完成: model={settings.DEEPSEEK_MODEL}")
+
     yield
 
     # 关闭时执行
