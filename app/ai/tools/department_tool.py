@@ -69,21 +69,21 @@ def _format_dept_node(node: dict, lines: List[str], depth: int) -> None:
         _format_dept_node(child, lines, depth + 1)
 
 
-async def _get_department_info(department_id: str) -> str:
+async def _get_department_info(departmentId: str) -> str:
     """
     获取部门详情
 
     Args:
-        department_id: 部门 ID
+        departmentId: 部门 ID
 
     Returns:
         格式化的部门详情文本
     """
-    if not department_id:
+    if not departmentId:
         return await _get_department_tree()
-    dept = await DepartmentRepository.find_by_id(department_id)
+    dept = await DepartmentRepository.find_by_id(departmentId)
     if not dept:
-        return f"未找到部门：{department_id}"
+        return f"未找到部门：{departmentId}"
     return (
         f"部门详情：\n"
         f"- 部门名称：{dept.name}\n"

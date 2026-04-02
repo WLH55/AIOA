@@ -1133,8 +1133,8 @@ const sendAIMessage = async () => {
   if (!aiConversationId.value) {
     try {
       const res = await createAIConversation()
-      if (res.code === 200 && res.data?.data?.id) {
-        aiConversationId.value = res.data.data.id
+      if (res.code === 200 && res.data?.id) {
+        aiConversationId.value = res.data.id
       } else {
         ElMessage.error('创建 AI 会话失败')
         return
