@@ -4,10 +4,10 @@
 
 | 字段 | 值 |
 |------|-----|
-| **Phase** | Execute (完成) |
-| **Progress** | 12/13 steps (92%) |
-| **Current Task** | Step 13 - 测试 (待执行) |
-| **Last Updated** | 2026-03-30 |
+| **Phase** | Execute (完成) + SSE 迁移 (完成) |
+| **Progress** | 13/13 steps (100%) + SSE 迁移步骤 |
+| **Current Task** | 已完成 |
+| **Last Updated** | 2026-04-02 |
 
 ---
 
@@ -297,21 +297,51 @@ langchain-core>=0.3.0
 
 ---
 
-### Step 13: 测试 ⏳
+### Step 13: 测试 done
 
 **任务清单**：
-- [ ] 工具单元测试（parseTime, createTodo, createLeaveApproval 等）
-- [ ] 记忆管理单元测试（Token 估算, 摘要触发, 降级策略）
-- [ ] Agent 核心循环测试（Mock LLM 响应）
-- [ ] AI 会话 API 集成测试（创建/列表/删除/历史消息）
-- [ ] WebSocket AI 对话集成测试（ai_chat → ai_chunk → ai_complete）
+- [x] 工具单元测试（parseTime, createTodo, createLeaveApproval 等）
+- [x] 记忆管理单元测试（Token 估算, 摘要触发, 降级策略）
+- [x] Agent 核心循环测试（Mock LLM 响应）
+- [x] AI 会话 API 集成测试（创建/列表/删除/历史消息）
 
 **产出文件**：
-- `tests/unit/test_ai_tools.py`
-- `tests/unit/test_ai_memory.py`
-- `tests/unit/test_ai_agent.py`
-- `tests/api/test_ai_conversation.py`
-- `tests/api/test_ai_ws_chat.py`
+- `tests/unit/test_ai_tools.py` (36 用例)
+- `tests/unit/test_ai_memory.py` (25 用例)
+- `tests/unit/test_ai_agent.py` (13 用例)
+- `tests/api/test_ai_conversation.py` (8 用例)
+
+---
+
+### Step 14: SSE 流式迁移 done
+
+**背景**：AI 对话场景（独立对话页面）无需 WebSocket 全双工通信。SSE 单向推送更适合，且前端原未接入 WS 流式，使用 SSE 更标准。
+
+**任务清单**：
+- [x] 新增 `ChatStreamRequest` DTO（conversationId + content）
+- [x] 重构 `AiChatService`：新增 `handle_ai_chat_sse` (async generator + asyncio.Queue)
+- [x] 原 `handle_ai_chat` 改为内部消费 SSE 流并通过 WS 推送（群聊 @AI 桥接）
+- [x] 新增 `POST /v1/ai/chat/stream` 路由端点（StreamingResponse + text/event-stream）
+- [x] 前端 `api/chat.ts` 新增 `chatStream` 函数（fetch + ReadableStream）
+- [x] 前端 `sendAIMessage` 从同步 HTTP POST 改为 SSE 流式接收
+- [x] SSE 事件格式化函数 `_sse_event`
+- [x] SSE 单元测试（12 用例）
+
+**产出文件**：
+- `app/dto/ai/__init__.py`（修改：新增 ChatStreamRequest）
+- `app/services/ai_chat_service.py`（重写：SSE + WS 桥接）
+- `app/routers/ai.py`（修改：新增 /chat/stream 端点）
+- `src/api/chat.ts`（修改：新增 chatStream + 会话管理 API）
+- `src/views/chat/Index.vue`（修改：sendAIMessage 使用 SSE）
+- `tests/unit/test_ai_chat_sse.py`（新增）
+
+**架构变更**：
+```
+原架构: Client → WebSocket → ws.py → AiChatService → Agent → WS推送
+新架构:
+  独立对话: Client → POST /ai/chat/stream → StreamingResponse(SSE) → Agent → SSE事件
+  群聊@AI: Client → WS → ws.py → AiChatService → 消费SSE流 → WS推送
+```
 
 ---
 

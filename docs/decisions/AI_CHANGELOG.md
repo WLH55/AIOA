@@ -460,3 +460,58 @@ Group 模块:
 - **原因**: 统一心跳机制，避免双向 ping 的混乱
 - **影响**: 心跳逻辑清晰，连接状态管理更可靠
 - **Files**: `app/services/ws_manager.py`, `app/routers/ws.py`, `app/dto/ws/message.py`
+
+---
+
+### 2026-04-02 Decision #023: AI 对话传输方式从 WebSocket 迁移至 SSE
+
+- **问题**: AI 独立对话页面使用 WebSocket 全双工通信是过度设计，且前端未接入 WS 流式
+- **决策**: 独立 AI 对话页面改用 SSE (Server-Sent Events)
+  - 新增 `POST /v1/ai/chat/stream` 端点，返回 `StreamingResponse(media_type="text/event-stream")`
+  - `AiChatService` 新增 `handle_ai_chat_sse` async generator 方法，通过 asyncio.Queue 中转 Agent 回调数据
+  - 原 `handle_ai_chat` 改为内部消费 SSE 流后通过 WS 推送（群聊 @AI 桥接模式）
+  - 前端使用 `fetch` + `ReadableStream` 消费 SSE 事件（axios 不支持 SSE）
+- **原因**:
+  - AI 对话是典型的单向推送场景（服务端→客户端），SSE 协议完全够用且更标准
+  - SSE 有标准的事件类型（event: xxx）、浏览器原生 `EventSource` 支持
+  - 减少不必要的 WebSocket 连接开销（AI 对话不需要客户端→服务端的实时通道）
+  - AgentExecutor 的回调机制天然支持 SSE（回调 → Queue → generator yield）
+- **影响**:
+  - 独立对话页面不再依赖 WebSocket 连接即可使用 AI 聊天
+  - 群聊 @AI 仍通过 WebSocket 触发，后端桥接 SSE → WS
+  - 前端 `sendAIMessage` 函数从同步等待完整响应改为流式接收
+- **替代方案**:
+  - 保持 WebSocket：全双工能力冗余，前端未接入流式
+  - Streaming HTTP（非标准 SSE）：缺少事件类型、重连等标准机制
+- **Files**: `app/services/ai_chat_service.py`, `app/routers/ai.py`, `app/dto/ai/__init__.py`, `src/api/chat.ts`, `src/views/chat/Index.vue`, `tests/unit/test_ai_chat_sse.py`
+
+---
+
+### 2026-04-02 AI Agent SSE 迁移实现进度
+
+| Step | 内容 | 状态 | 备注 |
+|------|------|------|------|
+| Step 1 | ChatStreamRequest DTO | done | app/dto/ai/__init__.py |
+| Step 2 | AiChatService SSE 方法 | done | handle_ai_chat_sse (async generator + Queue) |
+| Step 3 | WS 桥接模式 | done | handle_ai_chat 内部消费 SSE 流 |
+| Step 4 | SSE 路由端点 | done | POST /v1/ai/chat/stream |
+| Step 5 | 前端 SSE API | done | chatStream + 会话管理 API |
+| Step 6 | 前端 sendAIMessage 改造 | done | 从同步 HTTP 改为 SSE 流式 |
+| Step 7 | SSE 单元测试 | done | 12 用例全通过 |
+
+**新增/变更文件**:
+- `app/dto/ai/__init__.py` - 新增 ChatStreamRequest
+- `app/services/ai_chat_service.py` - 重写（SSE + WS 桥接）
+- `app/routers/ai.py` - 新增 /chat/stream 端点
+- `src/api/chat.ts` - 新增 chatStream、会话管理 API
+- `src/views/chat/Index.vue` - sendAIMessage SSE 化
+- `tests/unit/test_ai_chat_sse.py` - 新增 12 用例
+
+**SSE 事件类型**:
+- `ai_chunk` - 流式文本片段
+- `ai_tool_call` - 工具调用开始
+- `ai_tool_result` - 工具执行结果
+- `ai_complete` - AI 回复完成（含 messageId）
+- `ai_error` - 错误通知
+
+**实施完成**: 2026-04-02

@@ -2,8 +2,8 @@
 
 ## Test Scope (测试范围)
 
-- 单元测试：工具层、记忆管理层、Agent 核心循环
-- 集成测试：AI 会话 HTTP 接口、WebSocket AI 对话流程
+- 单元测试：工具层、记忆管理层、Agent 核心循环、SSE 事件格式化、SSE generator
+- 集成测试：AI 会话 HTTP 接口、SSE 流式对话流程
 - 契约测试：接口字段与 `02_interface.md` 一致性
 
 ## Test Strategy (测试策略)
@@ -133,6 +133,35 @@
 | TC-5.4 | 消息内容为空 | content="" | 收到 ai_error |
 | TC-5.5 | AI 处理期间正常聊天 | 发送 ai_chat 后立即发送 chat | 两者互不阻塞 |
 | TC-5.6 | AI 对话不阻塞群聊 | AI 处理中发送群聊消息 | 群聊消息正常收发 |
+
+### 6. SSE 流式对话单元测试
+
+#### 6.1 SSE 事件格式化
+
+| 编号 | 场景 | 输入 | 期望结果 |
+|------|------|------|----------|
+| TC-6.1.1 | ai_chunk 事件格式 | event="ai_chunk", data={content, index} | 包含 "event: ai_chunk" 行和 "data: {...}" 行，以 \n\n 结尾 |
+| TC-6.1.2 | ai_error 事件格式 | event="ai_error", data={error, message} | 包含 error 和 message 字段 |
+| TC-6.1.3 | ai_complete 事件格式 | event="ai_complete", data={content, messageId} | 包含 messageId 字段 |
+| TC-6.1.4 | ai_tool_call 事件格式 | event="ai_tool_call", data={tool, args, status} | 包含 tool 和 args 字段 |
+| TC-6.1.5 | 中文内容处理 | data 包含中文 | ensure_ascii=False，中文原样输出 |
+| TC-6.1.6 | 双换行结尾 | 任意事件 | 事件字符串以 \n\n 结尾 |
+
+#### 6.2 SSE Generator 流式测试
+
+| 编号 | 场景 | 条件 | 期望结果 |
+|------|------|------|----------|
+| TC-6.2.1 | 会话不存在 | conversationId 无效 | yield 单个 ai_error 事件 |
+| TC-6.2.2 | 无权访问会话 | conversationId 属于其他用户 | yield 单个 ai_error 事件 |
+| TC-6.2.3 | 正常 SSE 流式响应 | LLM 返回文本 | yield ai_chunk 序列 + ai_complete |
+| TC-6.2.4 | SSE 流含工具调用 | LLM 返回 tool_call | yield ai_tool_call + ai_tool_result + ai_complete |
+
+#### 6.3 WS 桥接模式测试
+
+| 编号 | 场景 | 条件 | 期望结果 |
+|------|------|------|----------|
+| TC-6.3.1 | WS 桥接转发 SSE 事件 | SSE generator 产出 ai_chunk + ai_complete | ws_manager.send_to_user 被调用 2 次，事件带 type 字段 |
+| TC-6.3.2 | WS 桥接处理空流 | SSE generator 无输出 | ws_manager.send_to_user 不被调用 |
 
 ## Data Preparation (数据准备)
 

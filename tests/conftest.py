@@ -28,6 +28,8 @@ from app.models.approval import Approval, Approver
 from app.models.department import Department
 from app.models.department_user import DepartmentUser
 from app.models.chat_log import ChatLog
+from app.models.ai_conversation import AiConversation
+from app.models.ai_summary import AiSummary
 from app.security.password import hash_password
 from app.security.jwt import create_access_token, create_refresh_token
 
@@ -65,6 +67,8 @@ async def db():
             Department,
             DepartmentUser,
             ChatLog,
+            AiConversation,
+            AiSummary,
         ],
     )
 

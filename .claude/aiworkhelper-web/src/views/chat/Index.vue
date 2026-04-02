@@ -368,7 +368,8 @@
 import { ref, reactive, computed, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Picture, Loading, Check } from '@element-plus/icons-vue'
-import { chat, createGroup, getChatHistory, getGroupList, getGroupInfo, inviteGroupMembers, removeGroupMember, exitGroup, updateGroup, dismissGroup, getUnreadList, clearUnread } from '@/api/chat'
+import { chat, chatStream, createAIConversation, getAIMessages, createGroup, getChatHistory, getGroupList, getGroupInfo, inviteGroupMembers, removeGroupMember, exitGroup, updateGroup, dismissGroup, getUnreadList, clearUnread } from '@/api/chat'
+import type { SSECallbacks } from '@/api/chat'
 import { uploadFile } from '@/api/upload'
 import { getUserList } from '@/api/user'
 import { getWebSocket, releaseWebSocket, WebSocketClient } from '@/utils/websocket'
@@ -484,6 +485,7 @@ const conversations = ref<Conversation[]>([
 const activeConversation = ref('ai')
 const currentChatType = ref<'ai' | 'group' | 'private'>('ai')
 const aiChatType = ref(0)
+const aiConversationId = ref('')
 
 const currentConversationName = computed(() => {
   return conversations.value.find(c => c.id === activeConversation.value)?.name || ''
@@ -1122,10 +1124,26 @@ const handleSend = async () => {
   }
 }
 
-// 发送AI消息
+// 发送AI消息（SSE 流式）
 const sendAIMessage = async () => {
   const content = inputMessage.value.trim()
   if (!content) return
+
+  // 确保有会话 ID（首次发送时自动创建）
+  if (!aiConversationId.value) {
+    try {
+      const res = await createAIConversation()
+      if (res.code === 200 && res.data?.data?.id) {
+        aiConversationId.value = res.data.data.id
+      } else {
+        ElMessage.error('创建 AI 会话失败')
+        return
+      }
+    } catch {
+      ElMessage.error('创建 AI 会话失败')
+      return
+    }
+  }
 
   // 添加用户消息到列表
   messages.value.push({
@@ -1140,202 +1158,48 @@ const sendAIMessage = async () => {
   inputMessage.value = ''
   scrollToBottom()
 
+  // 添加 AI 回复占位（流式追加）
+  const aiMsg: Message = {
+    sendId: 'ai',
+    senderName: 'AI助手',
+    content: '',
+    contentType: 1,
+    time: Date.now() / 1000,
+    isSelf: false
+  }
+  messages.value.push(aiMsg)
+  scrollToBottom()
+
   aiLoading.value = true
   try {
-    const res = await chat({
-      prompts: content,
-      chatType: aiChatType.value
+    await chatStream(aiConversationId.value, content, {
+      onChunk: (chunkContent, _index) => {
+        aiMsg.content += chunkContent
+        scrollToBottom()
+      },
+      onToolCall: (tool, _args, status) => {
+        // 在 AI 消息中显示工具调用提示
+        aiMsg.content += `\n[调用工具: ${tool} - ${status === 'running' ? '执行中...' : status}]\n`
+        scrollToBottom()
+      },
+      onToolResult: (tool, result, status) => {
+        if (status === 'error') {
+          aiMsg.content += `\n[工具 ${tool} 执行失败: ${result}]\n`
+        }
+        scrollToBottom()
+      },
+      onComplete: (_content, _messageId) => {
+        // 流式已完成，内容已经通过 onChunk 拼接完毕
+        scrollToBottom()
+      },
+      onError: (errorCode, message) => {
+        if (errorCode === 'CONVERSATION_NOT_FOUND') {
+          // 会话失效，重置会话 ID，让下次发送时重新创建
+          aiConversationId.value = ''
+        }
+        ElMessage.error(message || 'AI 处理失败')
+      }
     })
-
-    if (res.code === 200) {
-      // 格式化AI回复内容
-      let content = ''
-      let rawData = res.data.data
-
-      console.log('[AI回复] 原始数据类型:', typeof rawData)
-      console.log('[AI回复] 原始数据 (完整):', rawData)
-      console.log('[AI回复] 原始数据长度:', typeof rawData === 'string' ? rawData.length : 'N/A')
-
-      // 如果是字符串，尝试提取其中的JSON
-      if (typeof rawData === 'string') {
-        // 检查是否包含```json代码块（支持```json或```格式）
-        const jsonBlockMatch = rawData.match(/```json\s*\n([\s\S]*?)\n```/) ||
-                               rawData.match(/```\s*\n([\s\S]*?)\n```/) ||
-                               rawData.match(/```json\s*([\s\S]*?)```/) ||
-                               rawData.match(/```([\s\S]*?)```/)
-
-        if (jsonBlockMatch) {
-          try {
-            console.log('[AI回复] 检测到JSON代码块，提取内容')
-            const jsonStr = jsonBlockMatch[1].trim()
-            rawData = JSON.parse(jsonStr)
-            console.log('[AI回复] 成功解析JSON:', rawData)
-          } catch (e) {
-            console.error('[AI回复] JSON解析失败:', e)
-            // 尝试直接解析整个字符串
-            try {
-              rawData = JSON.parse(rawData)
-              console.log('[AI回复] 直接解析原始字符串成功')
-            } catch (e2) {
-              content = rawData
-            }
-          }
-        } else {
-          // 没有代码块，尝试直接解析为JSON
-          try {
-            const parsed = JSON.parse(rawData)
-            rawData = parsed
-            console.log('[AI回复] 直接解析字符串为JSON成功')
-          } catch (e) {
-            // 解析失败，作为普通文本处理
-            content = rawData
-          }
-        }
-      }
-
-      // 如果成功解析出对象，进行格式化
-      if (content === '' && typeof rawData === 'object' && rawData !== null) {
-        // 检查是否是标准的AI响应格式 {chatType: 1, data: {...}}
-        if (rawData.chatType !== undefined && rawData.data !== undefined) {
-          console.log('[AI回复] 检测到标准AI响应格式, chatType:', rawData.chatType)
-
-          // chatType=1 表示待办查询
-          if (rawData.chatType === 1 && rawData.data !== null && rawData.data.count !== undefined) {
-            const todos = rawData.data.data || []
-            const count = rawData.data.count
-            console.log('[AI回复] 待办查询结果，数量:', count)
-
-            if (count === 0 || todos.length === 0) {
-              content = '📋 暂无待办事项'
-            } else {
-              content = `📋 找到 ${count} 个待办事项:\n\n` +
-                todos.map((todo: any, index: number) => {
-                  const deadline = new Date(todo.deadlineAt * 1000).toLocaleString('zh-CN', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })
-                  const statusText = todo.status === 0 ? '📌 未发布' : todo.status === 1 ? '⏳ 进行中' : '✅ 已完成'
-                  return `${index + 1}. 【${todo.title}】\n` +
-                         `   👤 创建人: ${todo.creatorName}\n` +
-                         `   ⏰ 截止: ${deadline}\n` +
-                         `   ${statusText}\n` +
-                         `   📝 描述: ${todo.desc || '无'}`
-                }).join('\n\n')
-            }
-          }
-          // chatType=3 表示审批查询
-          else if (rawData.chatType === 3 && rawData.data !== null && rawData.data.count !== undefined) {
-            const approvals = rawData.data.data || []
-            const count = rawData.data.count
-            console.log('[AI回复] 审批查询结果，数量:', count)
-
-            if (count === 0 || approvals.length === 0) {
-              content = '📝 暂无审批单'
-            } else {
-              // 审批类型映射（与后端保持一致: 1=通用, 2=请假, 3=补卡, 4=外出, 5=报销, 6=付款, 7=采购, 8=收款）
-              const typeMap: Record<number, string> = {
-                1: '通用', 2: '请假', 3: '补卡', 4: '外出',
-                5: '报销', 6: '付款', 7: '采购', 8: '收款'
-              }
-              // 审批状态映射
-              const statusMap: Record<number, string> = {
-                0: '⏸️ 未开始', 1: '⏳ 进行中',
-                2: '✅ 已通过', 3: '🔙 已撤销', 4: '❌ 已拒绝'
-              }
-
-              content = `📝 找到 ${count} 个审批单:\n\n` +
-                approvals.map((approval: any, index: number) => {
-                  const createTime = approval.createAt
-                    ? new Date(approval.createAt * 1000).toLocaleString('zh-CN', {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })
-                    : '无'
-                  const typeText = typeMap[approval.type] || '未知'
-                  const statusText = statusMap[approval.status] || '未知'
-
-                  // 通过createId查找创建人名称
-                  const creator = userList.value.find(u => u.id === approval.createId)
-                  const creatorName = creator?.name || approval.creatorId || '未知'
-
-                  return `${index + 1}. 【${approval.title || '无标题'}】\n` +
-                         `   📂 类型: ${typeText}\n` +
-                         `   👤 创建人: ${creatorName}\n` +
-                         `   🕐 创建时间: ${createTime}\n` +
-                         `   ${statusText}\n` +
-                         `   📄 详情: ${approval.abstract || '无'}`
-                }).join('\n\n')
-            }
-          } else {
-            // 其他chatType类型，使用通用格式化
-            content = JSON.stringify(rawData.data, null, 2)
-          }
-        }
-        // 检查是否是嵌套结构的待办查询结果（兼容旧格式）
-        else if (rawData.data && rawData.data.count !== undefined && Array.isArray(rawData.data.data)) {
-          const todos = rawData.data.data
-          const count = rawData.data.count
-          console.log('[AI回复] 检测到嵌套待办结果，数量:', count)
-          if (todos.length === 0) {
-            content = '📋 暂无待办事项'
-          } else {
-            content = `📋 找到 ${count} 个待办事项:\n\n` +
-              todos.map((todo: any, index: number) => {
-                const deadline = new Date(todo.deadlineAt * 1000).toLocaleString('zh-CN', {
-                  year: 'numeric',
-                  month: '2-digit',
-                  day: '2-digit',
-                  hour: '2-digit',
-                  minute: '2-digit'
-                })
-                const statusText = todo.status === 0 ? '📌 未发布' : todo.status === 1 ? '⏳ 进行中' : '✅ 已完成'
-                return `${index + 1}. 【${todo.title}】\n` +
-                       `   👤 创建人: ${todo.creatorName}\n` +
-                       `   ⏰ 截止: ${deadline}\n` +
-                       `   ${statusText}\n` +
-                       `   📝 描述: ${todo.desc || '无'}`
-              }).join('\n\n')
-          }
-        } else if (Array.isArray(rawData)) {
-          // 直接是数组的情况
-          const todos = rawData
-          console.log('[AI回复] 检测到数组格式，数量:', todos.length)
-          if (todos.length === 0) {
-            content = '暂无待办事项'
-          } else {
-            content = `找到 ${todos.length} 个待办事项:\n\n` +
-              todos.map((todo: any, index: number) => {
-                const deadline = new Date(todo.deadlineAt * 1000).toLocaleString('zh-CN')
-                const statusText = todo.status === 0 ? '未发布' : todo.status === 1 ? '进行中' : '已完成'
-                return `${index + 1}. ${todo.title}\n   创建人: ${todo.creatorName}\n   截止时间: ${deadline}\n   状态: ${statusText}\n   描述: ${todo.desc || '无'}`
-              }).join('\n\n')
-          }
-        } else {
-          // 其他对象类型,使用JSON格式
-          console.log('[AI回复] 其他对象类型，使用JSON格式')
-          content = JSON.stringify(rawData, null, 2)
-        }
-      }
-
-      console.log('[AI回复] 最终格式化内容:', content.substring(0, 100))
-
-      // 添加AI回复
-      messages.value.push({
-        sendId: 'ai',
-        senderName: 'AI助手',
-        content,
-        contentType: 1,
-        time: Date.now() / 1000,
-        isSelf: false
-      })
-      scrollToBottom()
-    }
   } catch (error) {
     ElMessage.error('AI请求失败')
   } finally {

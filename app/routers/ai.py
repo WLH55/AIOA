@@ -1,17 +1,19 @@
 """
 AI 会话路由模块
 
-提供 AI 会话管理的 HTTP API 端点
+提供 AI 会话管理的 HTTP API 端点和 SSE 流式对话端点
 """
 import logging
 
-from fastapi import APIRouter, Depends, status, Query
+from fastapi import APIRouter, Depends, Request, status, Query
+from fastapi.responses import StreamingResponse
 
 from app.config.schemas import ApiResponse
-from app.dto.ai import CreateConversationRequest, DeleteConversationRequest
+from app.dto.ai import CreateConversationRequest, DeleteConversationRequest, ChatStreamRequest
 from app.dto.ai.ai_response import ConversationListResponse, MessageListResponse
 from app.models.user import User
 from app.security.dependencies import get_current_user
+from app.services.ai_chat_service import AiChatService
 from app.services.ai_conversation_service import AiConversationService
 
 logger = logging.getLogger(__name__)
@@ -101,3 +103,69 @@ async def get_conversation_messages(
         current_user, conversation_id, page, pageSize,
     )
     return ApiResponse.success(data=response.model_dump())
+
+
+@router.post(
+    "/chat/stream",
+    summary="AI 对话 SSE 流式接口",
+    description="通过 Server-Sent Events 流式返回 AI 对话响应",
+)
+async def chat_stream(
+    request: ChatStreamRequest,
+    fastapi_request: Request,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """
+    AI 对话 SSE 流式接口
+
+    客户端发送 POST 请求，服务端以 SSE 格式流式返回 AI 响应。
+    SSE 事件类型：ai_chunk、ai_tool_call、ai_tool_result、ai_complete、ai_error
+    需要携带有效的 Bearer Token
+    """
+    redis_client = getattr(fastapi_request.app.state, "redis", None)
+    if redis_client is None:
+        return StreamingResponse(
+            _error_sse_generator(request.conversationId, "AI 服务暂时不可用，请稍后重试"),
+            media_type="text/event-stream",
+            headers=_sse_headers(),
+        )
+    generator = AiChatService.handle_ai_chat_sse(
+        user=current_user,
+        conversation_id=request.conversationId,
+        content=request.content.strip(),
+        redis_client=redis_client,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers=_sse_headers(),
+    )
+
+
+def _sse_headers() -> dict:
+    """
+    返回 SSE 响应所需的 HTTP 头
+
+    Returns:
+        dict: SSE 响应头
+    """
+    return {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+    }
+
+
+async def _error_sse_generator(conversation_id: str, message: str):
+    """
+    生成 SSE 错误事件
+
+    Args:
+        conversation_id: 会话 ID
+        message: 错误消息
+
+    Yields:
+        str: SSE 格式错误事件
+    """
+    import json
+    yield f"event: ai_error\ndata: {json.dumps({'conversationId': conversation_id, 'error': 'AI_SERVICE_ERROR', 'message': message}, ensure_ascii=False)}\n\n"

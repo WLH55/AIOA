@@ -137,9 +137,65 @@ AI 对话消息复用现有 ChatLog 模型，约定：
 | list[].sendTime | int | 发送时间戳 |
 | total | int | 总数 |
 
+### 2.5 AI 对话 SSE 流式接口
+
+- **Method**: POST
+- **Path**: /v1/ai/chat/stream
+- **Auth**: Bearer Token
+- **Content-Type**: application/json
+- **Response Content-Type**: text/event-stream
+
+**Request**
+
+| 字段 | 类型 | 必填 | 说明 | 校验规则 |
+|------|------|------|------|----------|
+| conversationId | string | 是 | 会话 ID | 非空，24 位 ObjectId |
+| content | string | 是 | 用户消息内容 | 非空，最大 4000 字符 |
+
+**Response (SSE Event Stream)**
+
+返回 `text/event-stream` 格式的 SSE 事件流，每个事件格式：
+
+```
+event: <event_type>
+data: <json_payload>
+
+```
+
+**SSE 事件类型**：
+
+| event | 说明 | data 字段 |
+|-------|------|-----------|
+| ai_chunk | AI 流式文本片段 | conversationId, content, index |
+| ai_tool_call | 工具调用通知 | conversationId, tool, args, status |
+| ai_tool_result | 工具执行结果 | conversationId, tool, result, status |
+| ai_complete | AI 响应完成 | conversationId, content, messageId |
+| ai_error | 错误通知 | conversationId, error, message |
+
+**Response Headers**
+
+| Header | 值 | 说明 |
+|--------|-----|------|
+| Content-Type | text/event-stream | SSE 标准格式 |
+| Cache-Control | no-cache | 禁止缓存 |
+| Connection | keep-alive | 保持连接 |
+| X-Accel-Buffering | no | 禁止 Nginx 缓冲 |
+
+**错误场景（SSE 事件）**
+
+| 场景 | error | message |
+|------|-------|--------|
+| 会话不存在 | CONVERSATION_NOT_FOUND | 会话不存在或已删除 |
+| 无权访问 | FORBIDDEN | 无权访问该会话 |
+| Redis 不可用 | AI_SERVICE_ERROR | AI 服务暂时不可用，请稍后重试 |
+| LLM 异常 | AI_SERVICE_ERROR | AI 处理异常: ... |
+| 消息过长 | MESSAGE_TOO_LONG | 消息过长，最多 4000 字符 |
+
 ---
 
 ## 三、WebSocket 消息协议
+
+> **注**：独立 AI 对话页面已迁移至 SSE（见 2.5 节）。WebSocket AI 消息协议仅保留给群聊 @AI 场景使用，后端内部消费 SSE 流后将事件桥接为 WS 消息推送。
 
 ### 3.1 AI 对话消息类型
 
@@ -351,16 +407,16 @@ def parseTime(expression: str) -> str:
 
 ## 六、核心流程
 
-### 6.1 独立 AI 对话流程
+### 6.1 独立 AI 对话流程（SSE 模式）
 
 ```
 Client                     Server                      DeepSeek API
   │                          │                              │
-  │── ai_chat ──────────────→│                              │
+  │── POST /ai/chat/stream ─→│                              │
+  │   {conversationId,       │                              │
+  │    content}              │                              │
   │                          │── create_task ──────────────→│
-  │                          │   (异步派发，不阻塞主循环)      │
-  │                          │                              │
-  │  ← 正常聊天消息照常收发 ──│                              │
+  │                          │   (asyncio.Queue 中转)        │
   │                          │                              │
   │                          │   1. 获取记忆 (Redis/DB)      │
   │                          │   2. 组装上下文               │
@@ -368,20 +424,39 @@ Client                     Server                      DeepSeek API
   │                          │                              │
   │                          │───── chat + tools ──────────→│
   │                          │                              │
-  │←─ ai_tool_call ─────────│←── tool_call response ──────│
+  │←─ SSE: ai_tool_call ────│←── tool_call response ──────│
   │                          │                              │
   │                          │   执行工具                    │
-  │←─ ai_tool_result ───────│                              │
+  │←─ SSE: ai_tool_result ──│                              │
   │                          │                              │
   │                          │───── tool result ───────────→│
   │                          │                              │
-  │←─ ai_chunk ─────────────│←── stream chunk ────────────│
-  │←─ ai_chunk ─────────────│←── stream chunk ────────────│
-  │←─ ai_complete ──────────│←── done ────────────────────│
+  │←─ SSE: ai_chunk ────────│←── stream chunk ────────────│
+  │←─ SSE: ai_chunk ────────│←── stream chunk ────────────│
+  │←─ SSE: ai_complete ─────│←── done ────────────────────│
   │                          │                              │
   │                          │   4. 保存消息到 ChatLog       │
   │                          │   5. 更新 Redis 缓冲         │
   │                          │   6. 检查 Token → 必要时摘要  │
+  │                          │   7. yield sentinel → 结束流  │
+```
+
+### 6.1b 群聊 @AI 流程（WS 桥接模式）
+
+```
+Client                     Server                      DeepSeek API
+  │                          │                              │
+  │── WS: ai_chat ─────────→│                              │
+  │                          │── create_task ──────────────→│
+  │                          │   (内部消费 SSE generator)    │
+  │                          │                              │
+  │                          │   1. 调用 handle_ai_chat_sse │
+  │                          │   2. 解析 SSE 事件           │
+  │                          │   3. 添加 type 字段          │
+  │                          │   4. 通过 ws_manager 推送    │
+  │                          │                              │
+  │←─ WS: ai_chunk ────────│                              │
+  │←─ WS: ai_complete ─────│                              │
 ```
 
 ### 6.2 记忆管理流程
