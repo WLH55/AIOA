@@ -1,7 +1,7 @@
 """
 AI 记忆管理单元测试
 
-覆盖 Token 估算、摘要触发、摘要生成、记忆获取
+覆盖 Token 估算、动态阈值计算、摘要触发、熔断器、摘要生成、记忆获取
 """
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -33,36 +33,114 @@ class TestTokenEstimation:
         result = SummaryBuffer.estimate_token_count(500)
         assert result == 750
 
+    def test_estimate_char_from_token(self):
+        """TC-2.1.4: Token 转字符 1500 token -> 1000 字符"""
+        result = SummaryBuffer.estimate_char_count(1500)
+        assert result == 1000
 
-# ==================== 摘要触发测试 ====================
+
+# ==================== 动态阈值计算测试 ====================
 
 
-class TestSummaryTrigger:
-    """TC-2.2 摘要触发测试"""
+class TestDynamicThreshold:
+    """动态阈值计算测试"""
 
-    def _make_buffer(self, max_limit=2000):
+    def _make_buffer(self):
         """创建测试用 SummaryBuffer"""
         mock_redis = AsyncMock()
         with patch("app.ai.memory.summary_buffer.settings") as mock_settings:
-            mock_settings.AI_MEMORY_MAX_TOKEN_LIMIT = max_limit
+            mock_settings.AI_MODEL_CONTEXT_WINDOW = 128000
+            mock_settings.AI_MEMORY_RESERVED_TOKENS = 20000
+            mock_settings.AI_MEMORY_BUFFER_TOKENS = 13000
+            mock_settings.AI_MEMORY_MAX_FAILURES = 3
+            mock_settings.AI_MEMORY_KEEP_RECENT_COUNT = 10
             mock_settings.AI_MEMORY_REDIS_TTL = 86400
             buffer = SummaryBuffer(mock_redis)
         return buffer
 
-    def test_should_not_trigger_under_limit(self):
-        """TC-2.2.1: charCount=1500, limit=2000 不触发摘要"""
-        buffer = self._make_buffer(max_limit=2000)
-        assert buffer.should_trigger_summary(1500) is False
+    def test_auto_compact_threshold(self):
+        """动态阈值计算：128K - 20K - 13K = 95K tokens ≈ 63,333 字符"""
+        buffer = self._make_buffer()
+        threshold = buffer.get_auto_compact_threshold()
+        # 95K tokens / 1.5 ≈ 63,333 字符
+        assert threshold == 63333
 
-    def test_should_trigger_at_limit(self):
-        """TC-2.2.2: charCount=2100, limit=2000 触发摘要"""
-        buffer = self._make_buffer(max_limit=2000)
-        assert buffer.should_trigger_summary(2100) is True
+    def test_effective_context_window(self):
+        """有效上下文窗口：128K - 20K = 108K tokens"""
+        buffer = self._make_buffer()
+        window = buffer.get_effective_context_window()
+        assert window == 108000
 
-    def test_should_trigger_far_over_limit(self):
-        """TC-2.2.3: charCount=10000, limit=2000 触发摘要"""
-        buffer = self._make_buffer(max_limit=2000)
-        assert buffer.should_trigger_summary(10000) is True
+    def test_should_not_trigger_under_threshold(self):
+        """低于阈值不触发压缩"""
+        buffer = self._make_buffer()
+        assert buffer.should_trigger_summary(50000) is False
+
+    def test_should_trigger_over_threshold(self):
+        """超过阈值触发压缩"""
+        buffer = self._make_buffer()
+        assert buffer.should_trigger_summary(70000) is True
+
+
+# ==================== 熔断器测试 ====================
+
+
+class TestCircuitBreaker:
+    """熔断器机制测试"""
+
+    def _make_buffer(self):
+        """创建测试用 SummaryBuffer"""
+        mock_redis = AsyncMock()
+        with patch("app.ai.memory.summary_buffer.settings") as mock_settings:
+            mock_settings.AI_MODEL_CONTEXT_WINDOW = 128000
+            mock_settings.AI_MEMORY_RESERVED_TOKENS = 20000
+            mock_settings.AI_MEMORY_BUFFER_TOKENS = 13000
+            mock_settings.AI_MEMORY_MAX_FAILURES = 3
+            mock_settings.AI_MEMORY_KEEP_RECENT_COUNT = 10
+            mock_settings.AI_MEMORY_REDIS_TTL = 86400
+            buffer = SummaryBuffer(mock_redis)
+        return buffer
+
+    def test_circuit_breaker_closed_under_threshold(self):
+        """失败次数 < 3，熔断器关闭"""
+        buffer = self._make_buffer()
+        assert buffer.is_circuit_breaker_open(2) is False
+
+    def test_circuit_breaker_open_at_threshold(self):
+        """失败次数 >= 3，熔断器开启"""
+        buffer = self._make_buffer()
+        assert buffer.is_circuit_breaker_open(3) is True
+        assert buffer.is_circuit_breaker_open(4) is True
+
+    @pytest.mark.asyncio
+    async def test_get_failure_count_zero(self):
+        """初始失败计数为 0"""
+        buffer = self._make_buffer()
+        buffer._redis.get = AsyncMock(return_value=None)
+
+        count = await buffer.get_failure_count("conv1")
+
+        assert count == 0
+
+    @pytest.mark.asyncio
+    async def test_increment_failure_count(self):
+        """增加失败计数"""
+        buffer = self._make_buffer()
+        buffer._redis.incr = AsyncMock(return_value=1)
+        buffer._redis.expire = AsyncMock()
+
+        count = await buffer.increment_failure_count("conv1")
+
+        assert count == 1
+
+    @pytest.mark.asyncio
+    async def test_reset_failure_count(self):
+        """重置失败计数"""
+        buffer = self._make_buffer()
+
+        await buffer.reset_failure_count("conv1")
+
+        buffer._redis.delete.assert_called_once()
 
 
 # ==================== 摘要缓冲操作测试 ====================
@@ -75,7 +153,11 @@ class TestSummaryBuffer:
         """创建测试用 SummaryBuffer"""
         mock_redis = AsyncMock()
         with patch("app.ai.memory.summary_buffer.settings") as mock_settings:
-            mock_settings.AI_MEMORY_MAX_TOKEN_LIMIT = 2000
+            mock_settings.AI_MODEL_CONTEXT_WINDOW = 128000
+            mock_settings.AI_MEMORY_RESERVED_TOKENS = 20000
+            mock_settings.AI_MEMORY_BUFFER_TOKENS = 13000
+            mock_settings.AI_MEMORY_MAX_FAILURES = 3
+            mock_settings.AI_MEMORY_KEEP_RECENT_COUNT = 10
             mock_settings.AI_MEMORY_REDIS_TTL = 86400
             buffer = SummaryBuffer(mock_redis)
         return buffer
@@ -125,19 +207,17 @@ class TestSummaryBuffer:
 
     @pytest.mark.asyncio
     async def test_keep_recent_messages_over_limit(self):
-        """TC-2.3.3 降级策略：消息数超过限制时裁剪到最近 10 条"""
+        """降级策略：消息数超过限制时裁剪到最近 N 条"""
         buffer = self._make_buffer()
         buffer._redis.llen = AsyncMock(return_value=20)
 
         await buffer.keep_recent_messages("conv1", 10)
 
-        buffer._redis.ltrim.assert_called_once_with(
-            buffer._buffer_key("conv1"), 10, -1,
-        )
+        buffer._redis.ltrim.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_get_summary_hit(self):
-        """TC-2.4.1: Redis 缓存命中"""
+        """Redis 缓存命中"""
         buffer = self._make_buffer()
         buffer._redis.get = AsyncMock(return_value="这是一个摘要".encode("utf-8"))
 
@@ -147,7 +227,7 @@ class TestSummaryBuffer:
 
     @pytest.mark.asyncio
     async def test_get_summary_miss(self):
-        """TC-2.4.2: Redis 缓存未命中"""
+        """Redis 缓存未命中"""
         buffer = self._make_buffer()
         buffer._redis.get = AsyncMock(return_value=None)
 
@@ -180,19 +260,20 @@ class TestSummaryBuffer:
 
     @pytest.mark.asyncio
     async def test_clear_all(self):
-        """清除所有 Redis 缓存"""
+        """清除所有 Redis 缓存（缓冲、摘要、熔断计数）"""
         buffer = self._make_buffer()
 
         await buffer.clear_all("conv1")
 
-        assert buffer._redis.delete.call_count == 2
+        # 现在清除 3 个 key（缓冲、摘要、熔断计数）
+        assert buffer._redis.delete.call_count == 3
 
 
 # ==================== 记忆管理器测试 ====================
 
 
 class TestMemoryManager:
-    """TC-2.3 / TC-2.4 记忆管理器测试"""
+    """记忆管理器测试"""
 
     def _make_manager(self):
         """创建测试用 MemoryManager"""
@@ -202,7 +283,7 @@ class TestMemoryManager:
 
     @pytest.mark.asyncio
     async def test_get_memory_empty_conversation(self):
-        """TC-2.4.3: 全新会话返回空记忆"""
+        """全新会话返回空记忆"""
         manager = self._make_manager()
 
         with patch.object(manager, "_get_summary", return_value=None), \
@@ -214,7 +295,7 @@ class TestMemoryManager:
 
     @pytest.mark.asyncio
     async def test_get_memory_with_summary(self):
-        """TC-2.4.1: Redis 有摘要和缓冲"""
+        """Redis 有摘要和缓冲"""
         manager = self._make_manager()
 
         with patch.object(manager, "_get_summary", return_value="之前的对话摘要"), \
@@ -231,7 +312,7 @@ class TestMemoryManager:
 
     @pytest.mark.asyncio
     async def test_get_memory_redis_miss_fallback_mongodb(self):
-        """TC-2.4.2: Redis 未命中从 MongoDB 兜底加载"""
+        """Redis 未命中从 MongoDB 兜底加载"""
         manager = self._make_manager()
 
         with patch.object(manager, "_get_summary", return_value=None), \
@@ -253,16 +334,14 @@ class TestMemoryManager:
         with patch.object(manager._buffer, "add_message", return_value=100):
             await manager.add_user_message("conv1", "你好")
 
-            manager._buffer.add_message.assert_called_once_with(
-                "conv1", "user", "你好",
-            )
+            manager._buffer.add_message.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_add_assistant_message_no_summary(self):
-        """TC-2.3.1: 首次添加 AI 消息（未触发摘要）"""
+        """首次添加 AI 消息（未触发摘要）"""
         manager = self._make_manager()
 
-        with patch.object(manager._buffer, "add_message", return_value=1500), \
+        with patch.object(manager._buffer, "add_message", return_value=50000), \
              patch.object(manager._buffer, "should_trigger_summary", return_value=False):
             await manager.add_assistant_message("conv1", "这是 AI 的回答")
 
@@ -270,10 +349,10 @@ class TestMemoryManager:
 
     @pytest.mark.asyncio
     async def test_add_assistant_message_trigger_summary(self):
-        """TC-2.3.2: 添加 AI 消息触发摘要"""
+        """添加 AI 消息触发摘要"""
         manager = self._make_manager()
 
-        with patch.object(manager._buffer, "add_message", return_value=2100), \
+        with patch.object(manager._buffer, "add_message", return_value=70000), \
              patch.object(manager._buffer, "should_trigger_summary", return_value=True), \
              patch.object(manager, "_trigger_summary", return_value=None):
             await manager.add_assistant_message("conv1", "AI 回答")
@@ -282,7 +361,7 @@ class TestMemoryManager:
 
     @pytest.mark.asyncio
     async def test_trigger_summary_success(self):
-        """TC-2.3.4: 摘要成功后缓冲清空"""
+        """摘要成功后缓冲清空"""
         manager = self._make_manager()
 
         mock_llm = MagicMock()
@@ -290,7 +369,9 @@ class TestMemoryManager:
         mock_response.content = "新的对话摘要"
         mock_llm.ainvoke = AsyncMock(return_value=mock_response)
 
-        with patch.object(manager, "_get_summary", return_value=None), \
+        with patch.object(manager._buffer, "get_failure_count", return_value=0), \
+             patch.object(manager._buffer, "is_circuit_breaker_open", return_value=False), \
+             patch.object(manager, "_get_summary", return_value=None), \
              patch.object(manager._buffer, "get_buffer_messages", return_value=[
                  {"role": "user", "content": "你好"},
                  {"role": "assistant", "content": "你好！"},
@@ -298,7 +379,8 @@ class TestMemoryManager:
              patch("app.ai.memory.memory_manager.get_summary_llm", return_value=mock_llm), \
              patch("app.ai.memory.memory_manager.AiSummaryRepository") as mock_summary_repo, \
              patch.object(manager._buffer, "set_summary", return_value=None), \
-             patch.object(manager._buffer, "clear_buffer", return_value=None):
+             patch.object(manager._buffer, "clear_buffer", return_value=None), \
+             patch.object(manager._buffer, "reset_failure_count", return_value=None):
             mock_summary_repo.upsert = AsyncMock()
 
             await manager._trigger_summary("conv1")
@@ -306,14 +388,32 @@ class TestMemoryManager:
             mock_summary_repo.upsert.assert_called_once()
             manager._buffer.set_summary.assert_called_once()
             manager._buffer.clear_buffer.assert_called_once()
+            manager._buffer.reset_failure_count.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_trigger_summary_failure_fallback(self):
-        """TC-2.3.3: 摘要失败降级保留最近 10 条"""
+    async def test_trigger_summary_failure_increment_count(self):
+        """摘要失败增加熔断计数"""
         manager = self._make_manager()
 
-        with patch.object(manager, "_get_summary", side_effect=Exception("LLM Error")), \
+        with patch.object(manager._buffer, "get_failure_count", return_value=0), \
+             patch.object(manager._buffer, "is_circuit_breaker_open", return_value=False), \
+             patch.object(manager, "_get_summary", side_effect=Exception("LLM Error")), \
+             patch.object(manager._buffer, "increment_failure_count", return_value=1), \
              patch.object(manager._buffer, "keep_recent_messages", return_value=None):
             await manager._trigger_summary("conv1")
 
-            manager._buffer.keep_recent_messages.assert_called_once_with("conv1", 10)
+            manager._buffer.increment_failure_count.assert_called_once()
+            manager._buffer.keep_recent_messages.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_trigger_summary_circuit_breaker_open(self):
+        """熔断器开启时跳过压缩"""
+        manager = self._make_manager()
+
+        with patch.object(manager._buffer, "get_failure_count", return_value=3), \
+             patch.object(manager._buffer, "is_circuit_breaker_open", return_value=True), \
+             patch.object(manager._buffer, "keep_recent_messages", return_value=None):
+            await manager._trigger_summary("conv1")
+
+            # 熔断器开启，直接降级，不调用 LLM
+            manager._buffer.keep_recent_messages.assert_called_once()

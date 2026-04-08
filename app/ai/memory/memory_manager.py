@@ -4,7 +4,8 @@
 管理 AI 对话的上下文记忆，包括：
 - 获取记忆（摘要 + 最近对话）
 - 添加消息到缓冲
-- 触发摘要压缩
+- 触发摘要压缩（动态阈值）
+- 熔断器机制
 - MongoDB 兜底加载
 """
 import logging
@@ -20,6 +21,7 @@ from app.repository.chat_log_repository import ChatLogRepository
 
 logger = logging.getLogger(__name__)
 
+
 # AI 对话的 chatType
 CHAT_TYPE_AI = 3
 
@@ -29,6 +31,7 @@ class MemoryManager:
     多会话记忆管理器
 
     每个会话维护独立的上下文记忆，通过 Redis 缓冲和 MongoDB 持久化
+    采用动态阈值触发压缩，借鉴 Claude Code 的设计
     """
 
     def __init__(self, redis_client):
@@ -147,11 +150,26 @@ class MemoryManager:
         触发摘要压缩
 
         将当前摘要 + 缓冲对话发送给 LLM 生成新摘要
+        包含熔断器机制防止无限重试
 
         Args:
             conversation_id: 会话 ID
         """
-        logger.info(f"触发摘要压缩: conversationId={conversation_id}")
+        # 熔断器检查
+        failure_count = await self._buffer.get_failure_count(conversation_id)
+        if self._buffer.is_circuit_breaker_open(failure_count):
+            logger.warning(
+                f"熔断器已开启，跳过压缩: conversationId={conversation_id}, "
+                f"failures={failure_count}"
+            )
+            # 执行降级策略
+            await self._buffer.keep_recent_messages(conversation_id)
+            return
+
+        logger.info(
+            f"触发摘要压缩: conversationId={conversation_id}, "
+            f"threshold={self._buffer.get_auto_compact_threshold()} 字符"
+        )
         try:
             # 获取当前摘要和缓冲消息
             current_summary = await self._get_summary(conversation_id)
@@ -188,11 +206,17 @@ class MemoryManager:
             await self._buffer.set_summary(conversation_id, new_summary)
             # 清空 Redis 缓冲
             await self._buffer.clear_buffer(conversation_id)
+            # 重置熔断器计数
+            await self._buffer.reset_failure_count(conversation_id)
             logger.info(
                 f"摘要压缩完成: conversationId={conversation_id}, "
                 f"charCount={char_count}, summaryLen={len(new_summary)}"
             )
         except Exception as e:
-            logger.error(f"摘要生成失败，启用降级策略: {e}")
-            # 降级：只保留最近 10 条消息
-            await self._buffer.keep_recent_messages(conversation_id, 10)
+            # 增加熔断器计数
+            new_failure_count = await self._buffer.increment_failure_count(conversation_id)
+            logger.error(
+                f"摘要生成失败，熔断计数={new_failure_count}: {e}"
+            )
+            # 降级策略：只保留最近消息
+            await self._buffer.keep_recent_messages(conversation_id)

@@ -6,11 +6,12 @@
 import logging
 import time
 from datetime import datetime, timezone, timedelta
-from typing import List
+from typing import List, Dict, Any
 
-from langchain_core.tools import StructuredTool
+from langchain_core.tools import StructuredTool, BaseTool
 from pydantic import BaseModel, Field
 
+from app.ai.tools.base import ToolProvider
 from app.models.approval import Approval, Leave, MakeCard, GoOut
 from app.models.enums.approval_type import ApprovalType
 from app.repository.approval_repository import ApprovalRepository
@@ -18,11 +19,9 @@ from app.repository.approval_repository import ApprovalRepository
 logger = logging.getLogger(__name__)
 
 
-# 东八区时区
 _CST = timezone(timedelta(hours=8))
 
 
-# 假期类型映射
 _LEAVE_TYPE_MAP = {
     1: "事假", 2: "调休", 3: "病假", 4: "年假", 5: "产假",
     6: "陪产假", 7: "婚假", 8: "丧假", 9: "哺乳假",
@@ -36,14 +35,11 @@ def _generate_approval_no() -> str:
     Returns:
         审批编号，格式 AP + 年月日 + 毫秒后3位
     """
-    now_ms = int(time.time() * 1000)
-    dt = datetime.fromtimestamp(now_ms / 1000, tz=_CST)
-    date_str = dt.strftime("%Y%m%d")
-    suffix = str(now_ms)[-3:]
-    return f"AP{date_str}{suffix}"
-
-
-# ==================== 输入模型 ====================
+    nowMs = int(time.time() * 1000)
+    dt = datetime.fromtimestamp(nowMs / 1000, tz=_CST)
+    dateStr = dt.strftime("%Y%m%d")
+    suffix = str(nowMs)[-3:]
+    return f"AP{dateStr}{suffix}"
 
 
 class LeaveApprovalInput(BaseModel):
@@ -78,211 +74,229 @@ class FindApprovalsInput(BaseModel):
     )
 
 
-# ==================== 工厂函数 ====================
-
-
-def _make_create_leave_approval(user_id: str, user_name: str):
+def _make_create_leave_approval(userId: str, userName: str):
     """
     创建请假审批工具的工厂函数
 
     Args:
-        user_id: 当前用户 ID
-        user_name: 当前用户名
+        userId: 当前用户 ID
+        userName: 当前用户名
     """
     async def _create_leave_approval(
         leaveType: int, startTime: str, endTime: str, reason: str,
     ) -> str:
-        type_name = _LEAVE_TYPE_MAP.get(leaveType)
-        if not type_name:
+        typeName = _LEAVE_TYPE_MAP.get(leaveType)
+        if not typeName:
             return f"无效的请假类型：{leaveType}，有效值为 1-9"
-        start_ts = int(startTime)
-        end_ts = int(endTime)
-        if end_ts <= start_ts:
+        startTs = int(startTime)
+        endTs = int(endTime)
+        if endTs <= startTs:
             return "结束时间必须大于开始时间"
-        duration_hours = (end_ts - start_ts) / (1000 * 3600)
+        durationHours = (endTs - startTs) / (1000 * 3600)
         leave = Leave(
             type=leaveType,
-            startTime=start_ts,
-            endTime=end_ts,
+            startTime=startTs,
+            endTime=endTs,
             reason=reason,
-            timeType=2 if duration_hours >= 24 else 1,
-            duration=round(duration_hours, 1),
+            timeType=2 if durationHours >= 24 else 1,
+            duration=round(durationHours, 1),
         )
         approval = Approval(
-            userId=user_id,
+            userId=userId,
             no=_generate_approval_no(),
             type=ApprovalType.LEAVE.value,
             status=0,
-            title=f"{user_name}的{type_name}申请",
+            title=f"{userName}的{typeName}申请",
             abstract=reason,
             reason=reason,
             leave=leave,
-            participation=[user_id],
+            participation=[userId],
         )
         saved = await ApprovalRepository.create(approval)
-        start_dt = datetime.fromtimestamp(start_ts / 1000, tz=_CST)
-        end_dt = datetime.fromtimestamp(end_ts / 1000, tz=_CST)
+        startDt = datetime.fromtimestamp(startTs / 1000, tz=_CST)
+        endDt = datetime.fromtimestamp(endTs / 1000, tz=_CST)
         return (
-            f"请假申请已提交！类型：{type_name}，"
-            f"时间：{start_dt.strftime('%Y-%m-%d %H:%M')} ~ {end_dt.strftime('%Y-%m-%d %H:%M')}，"
+            f"请假申请已提交！类型：{typeName}，"
+            f"时间：{startDt.strftime('%Y-%m-%d %H:%M')} ~ {endDt.strftime('%Y-%m-%d %H:%M')}，"
             f"审批编号：{saved.no}"
         )
     return _create_leave_approval
 
 
-def _make_create_punch_approval(user_id: str, user_name: str):
+def _make_create_punch_approval(userId: str, userName: str):
     """
     创建补卡审批工具的工厂函数
 
     Args:
-        user_id: 当前用户 ID
-        user_name: 当前用户名
+        userId: 当前用户 ID
+        userName: 当前用户名
     """
     async def _create_punch_approval(
         punchType: int, date: str, reason: str,
     ) -> str:
         if punchType not in (1, 2):
             return "无效的补卡类型：1-上班卡, 2-下班卡"
-        date_ts = int(date)
-        dt = datetime.fromtimestamp(date_ts / 1000, tz=_CST)
-        day_int = int(dt.strftime("%Y%m%d"))
-        make_card = MakeCard(
-            date=date_ts,
+        dateTs = int(date)
+        dt = datetime.fromtimestamp(dateTs / 1000, tz=_CST)
+        dayInt = int(dt.strftime("%Y%m%d"))
+        makeCard = MakeCard(
+            date=dateTs,
             reason=reason,
-            day=day_int,
+            day=dayInt,
             checkType=punchType,
         )
-        punch_name = "上班卡" if punchType == 1 else "下班卡"
+        punchName = "上班卡" if punchType == 1 else "下班卡"
         approval = Approval(
-            userId=user_id,
+            userId=userId,
             no=_generate_approval_no(),
             type=ApprovalType.MAKE_CARD.value,
             status=0,
-            title=f"{user_name}的补卡申请（{punch_name}）",
+            title=f"{userName}的补卡申请（{punchName}）",
             abstract=reason,
             reason=reason,
-            makeCard=make_card,
-            participation=[user_id],
+            makeCard=makeCard,
+            participation=[userId],
         )
         saved = await ApprovalRepository.create(approval)
         return (
-            f"补卡申请已提交！类型：{punch_name}，"
+            f"补卡申请已提交！类型：{punchName}，"
             f"日期：{dt.strftime('%Y-%m-%d')}，审批编号：{saved.no}"
         )
     return _create_punch_approval
 
 
-def _make_create_go_out_approval(user_id: str, user_name: str):
+def _make_create_go_out_approval(userId: str, userName: str):
     """
     创建外出审批工具的工厂函数
 
     Args:
-        user_id: 当前用户 ID
-        user_name: 当前用户名
+        userId: 当前用户 ID
+        userName: 当前用户名
     """
     async def _create_go_out_approval(
         startTime: str, endTime: str, reason: str,
     ) -> str:
-        start_ts = int(startTime)
-        end_ts = int(endTime)
-        if end_ts <= start_ts:
+        startTs = int(startTime)
+        endTs = int(endTime)
+        if endTs <= startTs:
             return "结束时间必须大于开始时间"
-        duration = round((end_ts - start_ts) / (1000 * 3600), 1)
-        go_out = GoOut(
-            startTime=start_ts,
-            endTime=end_ts,
+        duration = round((endTs - startTs) / (1000 * 3600), 1)
+        goOut = GoOut(
+            startTime=startTs,
+            endTime=endTs,
             duration=duration,
             reason=reason,
         )
         approval = Approval(
-            userId=user_id,
+            userId=userId,
             no=_generate_approval_no(),
             type=ApprovalType.GO_OUT.value,
             status=0,
-            title=f"{user_name}的外出申请",
+            title=f"{userName}的外出申请",
             abstract=reason,
             reason=reason,
-            goOut=go_out,
-            participation=[user_id],
+            goOut=goOut,
+            participation=[userId],
         )
         saved = await ApprovalRepository.create(approval)
-        start_dt = datetime.fromtimestamp(start_ts / 1000, tz=_CST)
-        end_dt = datetime.fromtimestamp(end_ts / 1000, tz=_CST)
+        startDt = datetime.fromtimestamp(startTs / 1000, tz=_CST)
+        endDt = datetime.fromtimestamp(endTs / 1000, tz=_CST)
         return (
             f"外出申请已提交！"
-            f"时间：{start_dt.strftime('%H:%M')} ~ {end_dt.strftime('%H:%M')}（{duration}小时），"
+            f"时间：{startDt.strftime('%H:%M')} ~ {endDt.strftime('%H:%M')}（{duration}小时），"
             f"审批编号：{saved.no}"
         )
     return _create_go_out_approval
 
 
-def _make_find_approvals(user_id: str, _user_name: str):
+def _make_find_approvals(userId: str, userName: str):
     """
     查询审批记录工具的工厂函数
 
     Args:
-        user_id: 当前用户 ID
+        userId: 当前用户 ID
+        userName: 当前用户名
     """
     async def _find_approvals(queryType: str = "mine") -> str:
         if queryType == "pending":
             approvals, total = await ApprovalRepository.find_by_approval_id_and_status(
-                user_id, 0,
+                userId, 0,
             )
             prefix = "待我审批"
         else:
-            approvals, total = await ApprovalRepository.find_by_user_id(user_id)
+            approvals, total = await ApprovalRepository.find_by_user_id(userId)
             prefix = "我提交的"
         if not approvals:
             return f"暂无{prefix}的审批记录"
-        status_map = {0: "审批中", 1: "已通过", 2: "已拒绝", 3: "已撤销"}
-        type_map = {2: "请假", 3: "补卡", 4: "外出"}
+        statusMap = {0: "审批中", 1: "已通过", 2: "已拒绝", 3: "已撤销"}
+        typeMap = {2: "请假", 3: "补卡", 4: "外出"}
         lines = [f"找到 {total} 条{prefix}审批："]
         for i, app in enumerate(approvals[:10], 1):
-            status_text = status_map.get(app.status, "未知")
-            type_text = type_map.get(app.type, "审批")
-            line = f"{i}. {type_text} - {status_text} - {app.title or app.no}"
+            statusText = statusMap.get(app.status, "未知")
+            typeText = typeMap.get(app.type, "审批")
+            line = f"{i}. {typeText} - {statusText} - {app.title or app.no}"
             lines.append(line)
         return "\n".join(lines)
     return _find_approvals
 
 
-def get_approval_tools(user_id: str, user_name: str) -> List[StructuredTool]:
-    """
-    获取审批管理工具列表
+class ApprovalToolProvider(ToolProvider):
+    """审批管理工具提供者"""
 
-    Args:
-        user_id: 当前用户 ID
-        user_name: 当前用户名
+    name = "approval"
+    description = "审批管理工具"
+    requires_context = True
+    category = "business"
 
-    Returns:
-        工具列表
-    """
-    return [
-        StructuredTool.from_function(
-            coroutine=_make_create_leave_approval(user_id, user_name),
-            name="createLeaveApproval",
-            description=(
-                "创建请假审批。支持9种假期类型：1-事假, 2-调休, 3-病假, 4-年假, 5-产假, 6-陪产假, 7-婚假, 8-丧假, 9-哺乳假。"
-                "需要提供请假类型、起止时间和请假原因。"
+    def get_tools(
+        self,
+        user_id: str = None,
+        user_name: str = None,
+        context: Dict[str, Any] = None,
+    ) -> List[BaseTool]:
+        """
+        获取审批管理工具列表
+
+        Args:
+            user_id: 当前用户 ID
+            user_name: 当前用户名
+            context: 额外上下文信息（未使用）
+
+        Returns:
+            工具列表
+        """
+        if not user_id or not user_name:
+            return []
+        return [
+            StructuredTool.from_function(
+                coroutine=_make_create_leave_approval(user_id, user_name),
+                name="createLeaveApproval",
+                description=(
+                    "创建请假审批。支持9种假期类型：1-事假, 2-调休, 3-病假, 4-年假, 5-产假, 6-陪产假, 7-婚假, 8-丧假, 9-哺乳假。"
+                    "需要提供请假类型、起止时间和请假原因。"
+                ),
+                args_schema=LeaveApprovalInput,
             ),
-            args_schema=LeaveApprovalInput,
-        ),
-        StructuredTool.from_function(
-            coroutine=_make_create_punch_approval(user_id, user_name),
-            name="createPunchApproval",
-            description="创建补卡审批。支持上班卡(1)和下班卡(2)。需要补卡类型、日期和补卡原因。",
-            args_schema=PunchApprovalInput,
-        ),
-        StructuredTool.from_function(
-            coroutine=_make_create_go_out_approval(user_id, user_name),
-            name="createGoOutApproval",
-            description="创建外出审批。需要起止时间和外出原因。",
-            args_schema=GoOutApprovalInput,
-        ),
-        StructuredTool.from_function(
-            coroutine=_make_find_approvals(user_id, user_name),
-            name="findApprovals",
-            description="查询审批记录。queryType='mine'查询我提交的，queryType='pending'查询待我审批的。",
-            args_schema=FindApprovalsInput,
-        ),
-    ]
+            StructuredTool.from_function(
+                coroutine=_make_create_punch_approval(user_id, user_name),
+                name="createPunchApproval",
+                description="创建补卡审批。支持上班卡(1)和下班卡(2)。需要补卡类型、日期和补卡原因。",
+                args_schema=PunchApprovalInput,
+            ),
+            StructuredTool.from_function(
+                coroutine=_make_create_go_out_approval(user_id, user_name),
+                name="createGoOutApproval",
+                description="创建外出审批。需要起止时间和外出原因。",
+                args_schema=GoOutApprovalInput,
+            ),
+            StructuredTool.from_function(
+                coroutine=_make_find_approvals(user_id, user_name),
+                name="findApprovals",
+                description="查询审批记录。queryType='mine'查询我提交的，queryType='pending'查询待我审批的。",
+                args_schema=FindApprovalsInput,
+            ),
+        ]
+
+
+# 模块导入时自动注册
+ApprovalToolProvider().register()

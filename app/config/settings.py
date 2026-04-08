@@ -73,7 +73,14 @@ class Settings(BaseSettings):
     DEEPSEEK_API_KEY: str = ""
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-chat"
-    AI_MEMORY_MAX_TOKEN_LIMIT: int = 2000
+    # 上下文管理配置（基于模型窗口动态计算阈值）
+    AI_MODEL_CONTEXT_WINDOW: int = 128000  # 模型上下文窗口（tokens），DeepSeek 128K
+    AI_MEMORY_RESERVED_TOKENS: int = 20000  # 摘要预留空间（tokens）
+    AI_MEMORY_BUFFER_TOKENS: int = 13000   # 压缩缓冲区（tokens）
+    AI_MEMORY_MAX_FAILURES: int = 3         # 熔断器阈值：连续失败次数
+    AI_MEMORY_KEEP_RECENT_COUNT: int = 10   # 降级策略：保留最近消息数
+    # 旧配置项保留（兼容），将被动态计算替代
+    AI_MEMORY_MAX_TOKEN_LIMIT: int = 2000   # 已弃用，由动态阈值替代
     AI_MEMORY_REDIS_TTL: int = 86400
     AI_CONVERSATION_MAX_COUNT: int = 50
     AI_TIMEOUT: int = 120
