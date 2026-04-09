@@ -70,7 +70,14 @@ def _make_query_knowledge(userId: str, userName: str):
             context_parts = []
             for i, result in enumerate(results, 1):
                 source = result.metadata.get("filename", "未知文档")
-                context_parts.append(f"[参考{i} - 来源: {source}]\n{result.content}")
+                location = result.metadata.get("locationLabel", "")
+                doc_id = result.metadata.get("doc_id", "")
+                location_str = f" {location}" if location else ""
+                source_line = f"[参考{i} - 来源: {source}{location_str}]"
+                # 在来源标注中嵌入 doc_id 供前端解析
+                if doc_id:
+                    source_line = f"[参考{i} - 来源: {source}{location_str}|doc_id:{doc_id}]"
+                context_parts.append(f"{source_line}\n{result.content}")
 
             return "\n\n---\n\n".join(context_parts)
 
@@ -139,11 +146,11 @@ def _make_update_knowledge(userId: str, userName: str):
 
             for doc in docs:
                 try:
-                    # 解析文档
-                    text = DocumentParser.parse(doc.filepath)
-                    # 分块
-                    chunks = TextChunker.chunk(
-                        text,
+                    # 解析文档（结构化）
+                    parse_result = DocumentParser.parse_structured(doc.filepath)
+                    # 分块（带位置信息）
+                    chunks = TextChunker.chunk_structured(
+                        parse_result,
                         metadata={"filename": doc.filename, "doc_id": str(doc.id)},
                     )
                     if not chunks:

@@ -58,3 +58,22 @@ export function deleteKnowledge(docId: string): Promise<ApiResponse<void>> {
     data: { id: docId }
   })
 }
+
+/**
+ * 文档解析内容
+ */
+export interface DocumentContent {
+  filename: string
+  fileType: string
+  content: string
+}
+
+/**
+ * 获取文档解析内容（带行号/页码）
+ */
+export function getKnowledgeFileContent(docId: string): Promise<ApiResponse<DocumentContent>> {
+  return request({
+    url: `/v1/knowledge/file/${docId}/content`,
+    method: 'get'
+  })
+}

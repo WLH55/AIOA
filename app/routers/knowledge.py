@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, UploadFile, File, status, Query
+from fastapi.responses import JSONResponse
 
 from app.config import settings
 from app.config.schemas import ApiResponse
@@ -45,7 +46,9 @@ async def upload_file(
     """
     # 验证文件格式
     filename = file.filename or ""
-    ext = Path(filename).suffix.lower()
+    # 清洗文件名：只保留安全字符，防止路径遍历
+    safe_filename = Path(filename).name.replace("..", "").replace("/", "").replace("\\", "")
+    ext = Path(safe_filename).suffix.lower()
     supported = {".pdf", ".docx", ".txt", ".md"}
     if ext not in supported:
         return ApiResponse.error(
@@ -62,9 +65,9 @@ async def upload_file(
     if file_size > 50 * 1024 * 1024:  # 50MB 限制
         return ApiResponse.error(code=400, message="文件大小超过 50MB 限制")
 
-    # 保存文件（使用时间戳避免重名）
+    # 保存文件（使用时间戳 + 安全文件名避免重名和路径遍历）
     timestamp = int(time.time() * 1000)
-    safe_name = f"{timestamp}_{filename}"
+    safe_name = f"{timestamp}_{safe_filename}"
     file_path = _UPLOAD_DIR / safe_name
     with open(file_path, "wb") as f:
         f.write(content_bytes)
@@ -177,3 +180,72 @@ async def delete_document(
     await KnowledgeRepository.delete(doc_id)
 
     return ApiResponse.success(message="文档删除成功")
+
+
+@router.get(
+    "/file/{doc_id}/content",
+    response_model=ApiResponse,
+    summary="获取文档解析内容",
+    description="获取文档的解析文本内容，TXT/MD 带行号，PDF/Word 带页码/标题标记",
+)
+async def get_file_content(
+    doc_id: str,
+    current_user: User = Depends(get_current_user),
+) -> ApiResponse:
+    """
+    获取文档解析内容
+
+    返回解析后的纯文本内容，用于前端弹窗预览。
+    TXT/Markdown: 每行带行号前缀
+    PDF: 每页带 [第X页] 标记
+    Word: 每段带标题/段落标记
+    """
+    doc = await KnowledgeRepository.find_by_id(doc_id)
+    if not doc:
+        return ApiResponse.error(code=404, message="文档不存在")
+    if doc.userId != str(current_user.id):
+        return ApiResponse.error(code=403, message="无权访问此文档")
+
+    # 检查文件是否存在
+    file_path = Path(doc.filepath)
+    if not file_path.exists():
+        return ApiResponse.error(code=404, message="文件已被删除")
+
+    try:
+        from app.ai.document.parser import DocumentParser
+        parse_result = DocumentParser.parse_structured(str(file_path))
+
+        # 根据文件类型格式化输出
+        if doc.fileType in ("txt", "md"):
+            content = _format_with_line_numbers(parse_result.fullText)
+        else:
+            content = parse_result.fullText
+
+        return ApiResponse.success(data={
+            "filename": doc.filename,
+            "fileType": doc.fileType,
+            "content": content,
+        })
+    except Exception as e:
+        logger.error(f"获取文档内容失败: doc_id={doc_id}, error={e}")
+        return ApiResponse.error(code=500, message="文档解析失败，请稍后重试")
+
+
+def _format_with_line_numbers(text: str) -> str:
+    """
+    为纯文本添加行号前缀
+
+    Args:
+        text: 原始文本
+
+    Returns:
+        带行号的文本
+    """
+    lines = text.split("\n")
+    max_line_num = len(lines)
+    # 计算行号宽度
+    width = len(str(max_line_num))
+    numbered_lines = []
+    for i, line in enumerate(lines, 1):
+        numbered_lines.append(f"{str(i).rjust(width)}  {line}")
+    return "\n".join(numbered_lines)

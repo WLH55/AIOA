@@ -112,7 +112,7 @@
 
             <div class="chat-container">
               <!-- 消息列表 -->
-              <div ref="messageListRef" class="message-list">
+              <div ref="messageListRef" class="message-list" @click="handleMessageClick">
                 <div
                   v-for="(msg, index) in messages"
                   :key="index"
@@ -178,6 +178,21 @@
         </div>
       </div>
     </el-card>
+
+    <!-- 文档预览弹窗 -->
+    <el-dialog
+      v-model="previewVisible"
+      :title="previewTitle"
+      width="70%"
+      top="5vh"
+      destroy-on-close
+    >
+      <div v-if="previewLoading" class="preview-loading">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>加载中...</span>
+      </div>
+      <pre v-else class="preview-content">{{ previewContent }}</pre>
+    </el-dialog>
   </div>
 </template>
 
@@ -196,6 +211,7 @@ import {
   uploadKnowledgeFile,
   getKnowledgeList,
   deleteKnowledge,
+  getKnowledgeFileContent,
   type KnowledgeDocument
 } from '@/api/knowledge'
 import { chatStream, createAIConversation, type SSECallbacks } from '@/api/chat'
@@ -399,15 +415,68 @@ const formatMessageTime = (timestamp: number) => {
   return dayjs.unix(timestamp).format('HH:mm:ss')
 }
 
+// ========== 文档预览 ==========
+const previewVisible = ref(false)
+const previewTitle = ref('')
+const previewContent = ref('')
+const previewLoading = ref(false)
+
+const handleSourceClick = async (docId: string, filename: string) => {
+  previewTitle.value = `文档预览 - ${filename}`
+  previewVisible.value = true
+  previewLoading.value = true
+  previewContent.value = ''
+
+  try {
+    const res = await getKnowledgeFileContent(docId)
+    if (res.code === 200 && res.data) {
+      previewContent.value = res.data.content
+    } else {
+      previewContent.value = '加载失败'
+    }
+  } catch {
+    previewContent.value = '加载失败，请稍后重试'
+  } finally {
+    previewLoading.value = false
+  }
+}
+
 /**
- * 渲染消息内容（保留换行）
+ * 渲染消息内容
+ *
+ * 将 [参考X - 来源: xxx 位置|doc_id:yyy] 模式渲染为可点击链接
  */
 const renderMessage = (content: string) => {
-  return content
+  let html = content
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>')
+  html = html.replace(/\n/g, '<br>')
+  // 匹配来源标注: [参考X - 来源: 文件名 位置|doc_id:xxx]
+  html = html.replace(
+    /\[参考\d+ - 来源: ([^\]|]+?)(?:\s+([^\]|]+))?\|doc_id:([a-fA-F0-9]+)\]/g,
+    (_match, filename: string, location: string, docId: string) => {
+      const loc = location ? ` ${location.trim()}` : ''
+      // 转义属性值中的特殊字符防止 XSS
+      const safeFilename = filename.trim().replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+      const safeDocId = docId.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+      const label = `${filename.trim()}${loc}`
+      return `<span class="source-link" data-doc-id="${safeDocId}" data-filename="${safeFilename}">${label}</span>`
+    }
+  )
+  return html
+}
+
+// 事件委托：在消息列表容器上监听点击，避免全局污染
+const handleMessageClick = (e: MouseEvent) => {
+  const target = e.target as HTMLElement
+  if (target.classList.contains('source-link')) {
+    const docId = target.getAttribute('data-doc-id')
+    const filename = target.getAttribute('data-filename')
+    if (docId && filename) {
+      handleSourceClick(docId, filename)
+    }
+  }
 }
 
 const scrollToBottom = () => {
@@ -698,5 +767,41 @@ const scrollToBottom = () => {
   .upload-section {
     max-height: 400px;
   }
+}
+
+/* 来源标注可点击样式 */
+.source-link {
+  color: #409eff;
+  cursor: pointer;
+  text-decoration: underline;
+  font-weight: 500;
+}
+
+.source-link:hover {
+  color: #66b1ff;
+}
+
+/* 文档预览弹窗 */
+.preview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 40px;
+  color: #909399;
+}
+
+.preview-content {
+  max-height: 65vh;
+  overflow-y: auto;
+  padding: 16px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-wrap;
+  word-break: break-all;
+  margin: 0;
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
 }
 </style>
