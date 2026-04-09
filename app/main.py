@@ -24,6 +24,7 @@ from app.models.group import Group
 from app.models.unread_message import UnreadMessage
 from app.models.ai_conversation import AiConversation
 from app.models.ai_summary import AiSummary
+from app.models.knowledge import KnowledgeDocument
 
 # 导入路由
 from app.routers import auth_router, ws_router
@@ -35,7 +36,9 @@ from app.routers import chat_log as chat_log_router
 from app.routers import group as group_router
 from app.routers import unread as unread_router
 from app.routers import ai as ai_router
+from app.routers import knowledge as knowledge_router
 from app.services.ws_manager import ws_manager
+from app.config.redis import set_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,7 @@ async def lifespan(app: FastAPI):
                 UnreadMessage,
                 AiConversation,
                 AiSummary,
+                KnowledgeDocument,
             ],
         )
         logger.info(f"MongoDB 连接成功: {settings.MONGODB_DATABASE}")
@@ -81,6 +85,8 @@ async def lifespan(app: FastAPI):
         logger.info("Redis 连接成功")
         # 存储 redis 客户端到 app state
         app.state.redis = redis_client
+        # 设置全局 Redis 客户端引用（供知识库工具等非请求上下文使用）
+        set_redis_client(redis_client)
     except Exception as e:
         logger.warning(f"Redis 连接失败: {e}，部分功能可能不可用")
         app.state.redis = None
@@ -156,6 +162,8 @@ def create_app() -> FastAPI:
     app.include_router(unread_router.router, prefix=settings.API_PREFIX)
     # AI Agent 路由
     app.include_router(ai_router.router, prefix=settings.API_PREFIX)
+    # 知识库路由
+    app.include_router(knowledge_router.router, prefix=settings.API_PREFIX)
 
     # ========== 健康检查 ==========
     @app.get("/health")

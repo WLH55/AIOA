@@ -1,14 +1,31 @@
 import request from '@/utils/request'
-import type { ApiResponse, ChatRequest, ChatResponse, UploadResponse } from '@/types'
+import type { ApiResponse } from '@/types'
 
-// 上传知识库文件
-export function uploadKnowledgeFile(file: File): Promise<ApiResponse<UploadResponse>> {
+/**
+ * 知识库文件信息
+ */
+export interface KnowledgeDocument {
+  id: string
+  filename: string
+  fileSize: number
+  fileType: string
+  chunkCount: number
+  status: number  // 0=处理中, 1=已完成, 2=失败
+  uploadTime: number
+  updateTime: number
+}
+
+/**
+ * 上传知识库文件
+ *
+ * 文件上传后状态为"处理中"(status=0)，
+ * 需要在 AI 对话中发送指令让 Agent 调用 updateKnowledge 工具完成向量化。
+ */
+export function uploadKnowledgeFile(file: File): Promise<ApiResponse<KnowledgeDocument>> {
   const formData = new FormData()
   formData.append('file', file)
-  formData.append('chat', '1') // 启用记忆机制,后端会将文件信息保存到记忆中
-
   return request({
-    url: '/v1/upload/file',
+    url: '/v1/knowledge/upload',
     method: 'post',
     data: formData,
     headers: {
@@ -17,11 +34,27 @@ export function uploadKnowledgeFile(file: File): Promise<ApiResponse<UploadRespo
   })
 }
 
-// 知识库对话 - 更新知识库
-export function knowledgeChat(data: ChatRequest): Promise<ApiResponse<ChatResponse>> {
+/**
+ * 获取知识库文档列表
+ */
+export function getKnowledgeList(
+  page = 1,
+  pageSize = 20
+): Promise<ApiResponse<{ list: KnowledgeDocument[]; total: number }>> {
   return request({
-    url: '/v1/chat',
+    url: '/v1/knowledge/list',
+    method: 'get',
+    params: { page, pageSize }
+  })
+}
+
+/**
+ * 删除知识库文档
+ */
+export function deleteKnowledge(docId: string): Promise<ApiResponse<void>> {
+  return request({
+    url: '/v1/knowledge/delete',
     method: 'post',
-    data
+    data: { id: docId }
   })
 }

@@ -88,6 +88,23 @@ class Settings(BaseSettings):
     AI_MAX_TOOL_ROUNDS: int = 10
     AI_MAX_MESSAGE_LENGTH: int = 4000
 
+    # ========== Embedding 配置 (SiliconFlow) ==========
+    SILICONFLOW_API_KEY: str = ""
+    SILICONFLOW_BASE_URL: str = "https://api.siliconflow.cn/v1"
+    SILICONFLOW_EMBEDDING_MODEL: str = "BAAI/bge-m3"
+    SILICONFLOW_EMBEDDING_DIMENSIONS: int = 1024
+
+    # ========== 知识库配置 ==========
+    # Redis 向量索引
+    KNOWLEDGE_INDEX_NAME: str = "idx:knowledge_chunks"
+    KNOWLEDGE_KEY_PREFIX: str = "knowledge:chunk:"
+    # 文档处理
+    KNOWLEDGE_CHUNK_SIZE: int = 500        # 分块最大字符数
+    KNOWLEDGE_CHUNK_OVERLAP: int = 100     # 分块重叠字符数
+    KNOWLEDGE_TOP_K: int = 5              # KNN 检索返回数量
+    KNOWLEDGE_SCORE_THRESHOLD: float = 0.3  # 相似度阈值（余弦距离）
+    KNOWLEDGE_UPLOAD_DIR: str = "storage/knowledge"
+
     # ========== 其他配置 ==========
 
 

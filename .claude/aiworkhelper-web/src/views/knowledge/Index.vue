@@ -9,7 +9,7 @@
       </template>
 
       <div class="knowledge-content">
-        <!-- 左侧：文件上传区域 -->
+        <!-- 左侧：文件管理区域 -->
         <div class="upload-section">
           <el-card shadow="hover">
             <template #header>
@@ -24,7 +24,7 @@
               drag
               :before-upload="handleUploadFile"
               :show-file-list="false"
-              accept=".pdf,.doc,.docx,.txt"
+              accept=".pdf,.docx,.txt,.md"
             >
               <el-icon class="upload-icon"><UploadFilled /></el-icon>
               <div class="upload-text">
@@ -32,7 +32,7 @@
                 <em>点击上传</em>
               </div>
               <div class="upload-tip">
-                支持 PDF、Word、TXT 格式文件
+                支持 PDF、Word、TXT、Markdown 格式文件
               </div>
             </el-upload>
 
@@ -56,15 +56,30 @@
                   type="warning"
                   size="small"
                 >
-                  处理中
+                  待处理
                 </el-tag>
                 <el-tag
                   v-else-if="file.status === 1"
                   type="success"
                   size="small"
                 >
-                  已完成
+                  已入库
                 </el-tag>
+                <el-tag
+                  v-else-if="file.status === 2"
+                  type="danger"
+                  size="small"
+                >
+                  处理失败
+                </el-tag>
+                <el-button
+                  type="danger"
+                  size="small"
+                  text
+                  @click="handleDeleteFile(file.id)"
+                >
+                  删除
+                </el-button>
               </div>
             </div>
           </el-card>
@@ -77,15 +92,15 @@
               </div>
             </template>
             <div class="tips-content">
-              <p>1. 上传文档后,通过AI对话更新知识库</p>
-              <p>2. 更新成功后,可询问文档相关内容</p>
-              <p>3. AI会基于上传的文档进行智能回答</p>
+              <p>1. 上传文档后，在右侧发送"更新知识库"</p>
+              <p>2. 更新成功后，可直接提问文档内容</p>
+              <p>3. AI 基于文档内容进行智能回答</p>
               <p>4. 支持员工手册、规章制度等文档</p>
             </div>
           </el-card>
         </div>
 
-        <!-- 右侧:AI 对话区域 -->
+        <!-- 右侧：AI 对话区域（SSE 流式） -->
         <div class="chat-section">
           <el-card class="chat-card" body-style="padding: 0; height: 100%;">
             <template #header>
@@ -112,7 +127,7 @@
                       <span class="message-time">{{ formatMessageTime(msg.time) }}</span>
                     </div>
                     <div class="message-bubble">
-                      <div class="text-message">{{ msg.content }}</div>
+                      <div class="text-message" v-html="renderMessage(msg.content)"></div>
                     </div>
                   </div>
                 </div>
@@ -128,6 +143,15 @@
                 </div>
               </div>
 
+              <!-- 工具调用状态 -->
+              <div v-if="toolCalls.length > 0" class="tool-call-bar">
+                <div v-for="(tc, i) in toolCalls" :key="i" class="tool-call-item">
+                  <el-icon class="is-loading" v-if="tc.status === 'running'"><Loading /></el-icon>
+                  <el-icon v-else><CircleCheck /></el-icon>
+                  <span>{{ tc.tool }} - {{ tc.status }}</span>
+                </div>
+              </div>
+
               <!-- 输入区域 -->
               <div class="message-input-area">
                 <div class="input-box">
@@ -136,12 +160,13 @@
                     v-model="inputMessage"
                     type="textarea"
                     :rows="3"
-                    placeholder="例如: 根据我上传的文件更新知识库"
+                    placeholder="例如: 更新知识库 / 请假流程是什么？"
                     @keydown.enter.ctrl="handleSend"
+                    :disabled="aiLoading"
                   />
                   <el-button
                     type="primary"
-                    :loading="sending"
+                    :loading="aiLoading"
                     @click="handleSend"
                   >
                     发送 (Ctrl+Enter)
@@ -157,22 +182,29 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, onMounted, nextTick } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Upload,
   UploadFilled,
   Document,
   InfoFilled,
-  Loading
+  Loading,
+  CircleCheck
 } from '@element-plus/icons-vue'
-import { uploadKnowledgeFile, knowledgeChat } from '@/api/knowledge'
+import {
+  uploadKnowledgeFile,
+  getKnowledgeList,
+  deleteKnowledge,
+  type KnowledgeDocument
+} from '@/api/knowledge'
+import { chatStream, createAIConversation, type SSECallbacks } from '@/api/chat'
 import { useUserStore } from '@/stores/user'
 import dayjs from 'dayjs'
-import type { KnowledgeFile } from '@/types'
 
 const userStore = useUserStore()
 
+// ========== 对话状态 ==========
 interface Message {
   content: string
   time: number
@@ -183,127 +215,201 @@ const messageListRef = ref<HTMLElement>()
 const inputRef = ref()
 const messages = ref<Message[]>([
   {
-    content: '你好!我是知识库AI助手。你可以上传文档并让我帮你更新知识库,或者直接向我询问已有知识库中的内容。',
+    content: '你好！我是知识库AI助手。你可以上传文档后让我更新知识库，或者直接向我提问已有知识库中的内容。',
     time: Date.now() / 1000,
     isSelf: false
   }
 ])
 const inputMessage = ref('')
-const sending = ref(false)
 const aiLoading = ref(false)
-const chatMode = ref<'update' | 'query'>('update') // update=更新知识库, query=查询知识
-const uploadedFiles = ref<KnowledgeFile[]>([])
+const conversationId = ref('')
+const toolCalls = ref<Array<{ tool: string; status: string }>>([])
 
-// 格式化时间
-const formatTime = (timestamp: number) => {
-  return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+// ========== 文件状态 ==========
+const uploadedFiles = ref<KnowledgeDocument[]>([])
+
+// ========== 生命周期 ==========
+onMounted(async () => {
+  // 创建专用 AI 会话
+  try {
+    const res = await createAIConversation('知识库对话')
+    if (res.code === 200 && res.data?.data) {
+      conversationId.value = res.data.data.id
+    }
+  } catch (e) {
+    console.error('创建知识库会话失败:', e)
+  }
+  // 加载已有文档列表
+  await loadFileList()
+})
+
+// ========== 文件操作 ==========
+const loadFileList = async () => {
+  try {
+    const res = await getKnowledgeList(1, 50)
+    if (res.code === 200 && res.data) {
+      uploadedFiles.value = res.data.list || []
+    }
+  } catch {
+    // 静默失败
+  }
 }
 
-// 格式化消息时间
-const formatMessageTime = (timestamp: number) => {
-  return dayjs.unix(timestamp).format('HH:mm:ss')
-}
-
-// 上传文件
 const handleUploadFile = async (file: File) => {
   try {
     ElMessage.info('正在上传文件...')
     const res = await uploadKnowledgeFile(file)
-
-    if (res.code === 200) {
-      const uploadedFile: KnowledgeFile = {
-        id: Date.now().toString(),
-        filename: res.data.filename,
-        filepath: res.data.file, // 使用相对路径,后端会自动转换为绝对路径
-        uploadTime: Date.now(),
-        status: 0 // 处理中
-      }
-      uploadedFiles.value.unshift(uploadedFile)
-
-      ElMessage.success('文件上传成功!')
-
-      // 自动添加提示消息
+    if (res.code === 200 && res.data) {
+      uploadedFiles.value.unshift(res.data)
+      ElMessage.success('文件上传成功！')
+      // 添加提示消息
       messages.value.push({
-        content: `文件 "${file.name}" 已上传成功,接下可以给我发送消息更新知识库。`,
+        content: `文件 "${file.name}" 已上传成功。请发送"更新知识库"让我处理文档内容。`,
         time: Date.now() / 1000,
         isSelf: false
       })
-
-      // 自动填充更新命令 - 使用简单命令,后端通过记忆机制自动找到文件
-      inputMessage.value = `根据我上传的文件更新知识库`
-      chatMode.value = 'update'
-
+      // 自动填充指令
+      inputMessage.value = '根据我上传的文件更新知识库'
       scrollToBottom()
     }
-  } catch (error) {
+  } catch {
     ElMessage.error('文件上传失败')
   }
-
   return false
 }
 
-// 发送消息
-const handleSend = async () => {
-  if (!inputMessage.value.trim()) return
-
-  const content = inputMessage.value.trim()
-
-  // 添加用户消息
-  messages.value.push({
-    content,
-    time: Date.now() / 1000,
-    isSelf: true
-  })
-
-  inputMessage.value = ''
-  scrollToBottom()
-
-  // 根据模式调用不同的AI功能
-  aiLoading.value = true
-  sending.value = true
-
+const handleDeleteFile = async (docId: string) => {
   try {
-    // chatType: 0 默认对话模式,后端会通过智能路由自动识别
-    // 根据消息内容自动路由到 knowledge_update 或 knowledge_retrieval_qa
-    const res = await knowledgeChat({
-      prompts: content,
-      chatType: 0
+    await ElMessageBox.confirm('确定要删除该文档吗？关联的知识数据也会被清除。', '删除确认', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
     })
-
+    const res = await deleteKnowledge(docId)
     if (res.code === 200) {
-      // 如果是更新知识库成功,更新文件状态
-      if (chatMode.value === 'update' && res.data.data?.includes('成功')) {
-        const updatingFiles = uploadedFiles.value.filter(f => f.status === 0)
-        updatingFiles.forEach(f => {
-          f.status = 1
-        })
-      }
-
-      // 添加 AI 回复
-      messages.value.push({
-        content: typeof res.data.data === 'string' ? res.data.data : JSON.stringify(res.data.data, null, 2),
-        time: Date.now() / 1000,
-        isSelf: false
-      })
-
-      scrollToBottom()
+      uploadedFiles.value = uploadedFiles.value.filter(f => f.id !== docId)
+      ElMessage.success('文档已删除')
     }
-  } catch (error: any) {
-    ElMessage.error(error?.message || 'AI请求失败')
-
-    // 添加错误提示消息
-    messages.value.push({
-      content: '抱歉,请求失败了。请稍后重试。',
-      time: Date.now() / 1000,
-      isSelf: false
-    })
-  } finally {
-    aiLoading.value = false
-    sending.value = false
+  } catch {
+    // 用户取消
   }
 }
 
-// 滚动到底部
+// ========== 对话操作 ==========
+const handleSend = async () => {
+  if (!inputMessage.value.trim() || aiLoading.value) return
+  if (!conversationId.value) {
+    ElMessage.error('会话未就绪，请刷新页面重试')
+    return
+  }
+
+  const content = inputMessage.value.trim()
+  messages.value.push({ content, time: Date.now() / 1000, isSelf: true })
+  inputMessage.value = ''
+  scrollToBottom()
+
+  aiLoading.value = true
+  toolCalls.value = []
+  let aiContent = ''
+
+  const callbacks: SSECallbacks = {
+    onChunk: (chunk) => {
+      aiContent += chunk
+      // 更新最后一条 AI 消息内容
+      updateOrCreateAiMessage(aiContent)
+    },
+    onToolCall: (tool, _args, status) => {
+      toolCalls.value.push({ tool, status })
+      // 文件状态刷新（updateKnowledge 完成后）
+      if (tool === 'updateKnowledge' && status === 'running') {
+        loadFileList()
+      }
+    },
+    onToolResult: (tool, _result, status) => {
+      const tc = toolCalls.value.find(t => t.tool === tool && t.status === 'running')
+      if (tc) tc.status = status
+      // 更新完成后刷新文件列表
+      if (tool === 'updateKnowledge') {
+        setTimeout(loadFileList, 1000)
+      }
+    },
+    onComplete: (fullContent) => {
+      aiLoading.value = false
+      toolCalls.value = []
+      // 确保最终内容完整
+      updateOrCreateAiMessage(fullContent || aiContent, true)
+      // 刷新文件列表状态
+      loadFileList()
+    },
+    onError: (errorCode, message) => {
+      aiLoading.value = false
+      toolCalls.value = []
+      if (errorCode === 'UNAUTHORIZED') {
+        ElMessage.error('登录已过期，请重新登录')
+      } else {
+        updateOrCreateAiMessage(`抱歉，处理出现了问题: ${message}`)
+      }
+    }
+  }
+
+  try {
+    await chatStream(conversationId.value, content, callbacks)
+  } catch (e: any) {
+    aiLoading.value = false
+    updateOrCreateAiMessage('抱歉，请求失败了。请稍后重试。')
+  }
+}
+
+/**
+ * 更新或创建 AI 回复消息（支持流式追加）
+ */
+const updateOrCreateAiMessage = (content: string, isFinal = false) => {
+  const lastMsg = messages.value[messages.value.length - 1]
+  if (lastMsg && !lastMsg.isSelf && !isFinal) {
+    // 更新已有的 AI 消息（流式追加）
+    lastMsg.content = content
+  } else if (isFinal) {
+    // 最终内容：更新最后一条 AI 消息
+    if (lastMsg && !lastMsg.isSelf) {
+      lastMsg.content = content
+    } else {
+      messages.value.push({
+        content,
+        time: Date.now() / 1000,
+        isSelf: false
+      })
+    }
+  } else {
+    // 新增 AI 消息
+    messages.value.push({
+      content,
+      time: Date.now() / 1000,
+      isSelf: false
+    })
+  }
+  scrollToBottom()
+}
+
+// ========== 工具方法 ==========
+const formatTime = (timestamp: number) => {
+  return dayjs(timestamp).format('YYYY-MM-DD HH:mm:ss')
+}
+
+const formatMessageTime = (timestamp: number) => {
+  return dayjs.unix(timestamp).format('HH:mm:ss')
+}
+
+/**
+ * 渲染消息内容（保留换行）
+ */
+const renderMessage = (content: string) => {
+  return content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+}
+
 const scrollToBottom = () => {
   nextTick(() => {
     if (messageListRef.value) {
@@ -543,15 +649,28 @@ const scrollToBottom = () => {
   white-space: pre-wrap;
 }
 
+.tool-call-bar {
+  display: flex;
+  gap: 12px;
+  padding: 8px 16px;
+  background-color: #fafafa;
+  border-top: 1px solid #ebeef5;
+  flex-shrink: 0;
+}
+
+.tool-call-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: #909399;
+}
+
 .message-input-area {
   flex-shrink: 0;
   border-top: 1px solid #dcdfe6;
   padding: 16px;
   background-color: #ffffff;
-}
-
-.input-toolbar {
-  margin-bottom: 12px;
 }
 
 .input-box {

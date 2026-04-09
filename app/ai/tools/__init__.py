@@ -11,6 +11,7 @@ from app.ai.tools.time_tool import TimeToolProvider
 from app.ai.tools.user_tool import UserToolProvider
 from app.ai.tools.todo_tool import TodoToolProvider
 from app.ai.tools.approval_tool import ApprovalToolProvider
+from app.ai.tools.knowledge_tool import KnowledgeToolProvider
 
 
 __all__ = [
@@ -21,4 +22,5 @@ __all__ = [
     "UserToolProvider",
     "TodoToolProvider",
     "ApprovalToolProvider",
+    "KnowledgeToolProvider",
 ]
