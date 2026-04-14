@@ -249,8 +249,8 @@ onMounted(async () => {
   // 创建专用 AI 会话
   try {
     const res = await createAIConversation('知识库对话')
-    if (res.code === 200 && res.data?.data) {
-      conversationId.value = res.data.data.id
+    if (res.code === 200 && res.data) {
+      conversationId.value = res.data.id
     }
   } catch (e) {
     console.error('创建知识库会话失败:', e)
