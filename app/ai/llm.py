@@ -3,6 +3,7 @@ DeepSeek LLM 客户端封装
 
 基于 LangChain ChatOpenAI 配置 DeepSeek API 连接，支持流式输出和工具绑定
 """
+
 import logging
 
 from langchain_openai import ChatOpenAI
@@ -21,7 +22,9 @@ def _validate_api_key() -> None:
         BusinessValidationException: API Key 未配置时抛出
     """
     if not settings.DEEPSEEK_API_KEY:
-        raise BusinessValidationException("DEEPSEEK_API_KEY 未配置，AI Agent 功能不可用")
+        raise BusinessValidationException(
+            "DEEPSEEK_API_KEY 未配置，AI Agent 功能不可用"
+        )
 
 
 def get_chat_llm(streaming: bool = True) -> ChatOpenAI:
@@ -44,7 +47,7 @@ def get_chat_llm(streaming: bool = True) -> ChatOpenAI:
         model=settings.DEEPSEEK_MODEL,
         streaming=streaming,
         temperature=0.7,
-        max_tokens=4096,
+        max_tokens=settings.AI_CHAT_MAX_TOKENS,
         timeout=settings.AI_TIMEOUT,
     )
 
@@ -68,6 +71,6 @@ def get_summary_llm() -> ChatOpenAI:
         model=settings.AI_SUMMARY_MODEL,
         streaming=False,
         temperature=0.3,
-        max_tokens=1024,
+        max_tokens=settings.AI_SUMMARY_MAX_TOKENS,
         timeout=settings.AI_TIMEOUT,
     )

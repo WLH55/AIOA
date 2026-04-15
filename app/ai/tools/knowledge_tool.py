@@ -4,6 +4,7 @@
 提供知识库查询和更新能力，作为 Agent 的原子工具注册到 TOOL_REGISTRY。
 通过闭包注入当前用户上下文和 Redis 客户端。
 """
+
 import logging
 from typing import List, Dict, Any, Optional
 
@@ -17,11 +18,13 @@ logger = logging.getLogger(__name__)
 
 class QueryKnowledgeInput(BaseModel):
     """知识库查询输入"""
+
     question: str = Field(..., description="用户的问题或查询关键词")
 
 
 class UpdateKnowledgeInput(BaseModel):
     """知识库更新输入"""
+
     docIds: List[str] = Field(
         default_factory=list,
         description="要更新的文档 ID 列表，为空则更新所有待处理文档",
@@ -36,6 +39,7 @@ def _make_query_knowledge(userId: str, userName: str):
         userId: 当前用户 ID
         userName: 当前用户名
     """
+
     async def _query_knowledge(question: str) -> str:
         """
         查询知识库
@@ -56,15 +60,24 @@ def _make_query_knowledge(userId: str, userName: str):
             query_embedding = await embed_text(question)
             # 从应用状态获取 Redis 客户端
             from app.config.redis import get_redis_client
+
             redis_client = await get_redis_client()
             if not redis_client:
                 return "知识库服务暂时不可用（Redis 未连接）"
 
             store = RedisVectorStore(redis_client)
             results = await store.search(query_embedding)
+            logger.info(
+                "知识库查询完成: user_id=%s, question_length=%s, result_count=%s",
+                userId,
+                len(question),
+                len(results),
+            )
 
             if not results:
-                return "知识库中未找到与您问题相关的内容。建议先上传相关文档并更新知识库。"
+                return (
+                    "知识库中未找到与您问题相关的内容。建议先上传相关文档并更新知识库。"
+                )
 
             # 拼装检索结果
             context_parts = []
@@ -76,7 +89,9 @@ def _make_query_knowledge(userId: str, userName: str):
                 source_line = f"[参考{i} - 来源: {source}{location_str}]"
                 # 在来源标注中嵌入 doc_id 供前端解析
                 if doc_id:
-                    source_line = f"[参考{i} - 来源: {source}{location_str}|doc_id:{doc_id}]"
+                    source_line = (
+                        f"[参考{i} - 来源: {source}{location_str}|doc_id:{doc_id}]"
+                    )
                 context_parts.append(f"{source_line}\n{result.content}")
 
             return "\n\n---\n\n".join(context_parts)
@@ -85,7 +100,9 @@ def _make_query_knowledge(userId: str, userName: str):
             logger.warning(f"知识库查询配置错误: {e}")
             return f"知识库查询失败: {str(e)}"
         except Exception as e:
-            logger.error(f"知识库查询异常: question={question}, error={e}", exc_info=True)
+            logger.error(
+                f"知识库查询异常: question={question}, error={e}", exc_info=True
+            )
             return "知识库查询出现错误，请稍后重试"
 
     return _query_knowledge
@@ -99,6 +116,7 @@ def _make_update_knowledge(userId: str, userName: str):
         userId: 当前用户 ID
         userName: 当前用户名
     """
+
     async def _update_knowledge(docIds: Optional[List[str]] = None) -> str:
         """
         更新知识库
@@ -164,20 +182,37 @@ def _make_update_knowledge(userId: str, userName: str):
                     # 批量向量化
                     texts = [c["content"] for c in chunks]
                     embeddings = await embed_batch(texts)
+                    logger.info(
+                        "知识库向量化完成: doc_id=%s, filename=%s, chunks=%s, embeddings=%s",
+                        str(doc.id),
+                        doc.filename,
+                        len(chunks),
+                        len(embeddings),
+                    )
 
                     # 存入 Redis
                     added = await store.add_documents(str(doc.id), chunks, embeddings)
+                    logger.info(
+                        "知识库写入 Redis 完成: doc_id=%s, filename=%s, added=%s",
+                        str(doc.id),
+                        doc.filename,
+                        added,
+                    )
 
                     # 更新文档状态
                     await KnowledgeRepository.update_status(
-                        str(doc.id), status=1, chunk_count=added,
+                        str(doc.id),
+                        status=1,
+                        chunk_count=added,
                     )
                     success_count += 1
                     total_chunks += added
                     logger.info(f"文档处理成功: {doc.filename}, chunks={added}")
 
                 except Exception as e:
-                    logger.error(f"文档处理失败: {doc.filename}, error={e}", exc_info=True)
+                    logger.error(
+                        f"文档处理失败: {doc.filename}, error={e}", exc_info=True
+                    )
                     await KnowledgeRepository.update_status(str(doc.id), status=2)
                     fail_count += 1
 
@@ -186,7 +221,9 @@ def _make_update_knowledge(userId: str, userName: str):
                 result_parts.append(f"失败 {fail_count} 个")
             result_parts.append(f"共生成 {total_chunks} 个知识块")
 
-            return "，".join(result_parts) + "。现在您可以向我提问关于文档内容的问题了。"
+            return (
+                "，".join(result_parts) + "。现在您可以向我提问关于文档内容的问题了。"
+            )
 
         except ValueError as e:
             logger.warning(f"知识库更新配置错误: {e}")

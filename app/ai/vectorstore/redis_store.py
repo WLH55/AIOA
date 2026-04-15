@@ -4,6 +4,7 @@ Redis RediSearch 向量存储
 封装 FT.CREATE / FT.SEARCH / HSET / HGETALL 等操作，
 提供知识库文档向量的存储、检索和管理能力。
 """
+
 import json
 import logging
 import struct
@@ -19,7 +20,10 @@ logger = logging.getLogger(__name__)
 
 class SearchResult:
     """向量检索结果条目"""
-    def __init__(self, chunk_id: str, content: str, score: float, metadata: Dict[str, Any]):
+
+    def __init__(
+        self, chunk_id: str, content: str, score: float, metadata: Dict[str, Any]
+    ):
         self.chunkId = chunk_id
         self.content = content
         self.score = score
@@ -66,17 +70,30 @@ class RedisVectorStore:
 
         try:
             await self._redis.execute_command(
-                "FT.CREATE", self._index_name,
-                "ON", "HASH",
-                "PREFIX", "1", self._key_prefix,
+                "FT.CREATE",
+                self._index_name,
+                "ON",
+                "HASH",
+                "PREFIX",
+                "1",
+                self._key_prefix,
                 "SCHEMA",
-                "doc_id", "TAG",
-                "content", "TEXT",
-                "embedding", "VECTOR", "FLAT", "6",
-                "TYPE", "FLOAT32",
-                "DIM", str(self._dimensions),
-                "DISTANCE_METRIC", "COSINE",
-                "metadata", "TEXT",
+                "doc_id",
+                "TAG",
+                "content",
+                "TEXT",
+                "embedding",
+                "VECTOR",
+                "FLAT",
+                "6",
+                "TYPE",
+                "FLOAT32",
+                "DIM",
+                str(self._dimensions),
+                "DISTANCE_METRIC",
+                "COSINE",
+                "metadata",
+                "TEXT",
             )
             logger.info(f"向量索引创建成功: {self._index_name}")
             return True
@@ -113,12 +130,17 @@ class RedisVectorStore:
                 chunk_id = str(uuid.uuid4())
                 key = f"{self._key_prefix}{chunk_id}"
                 vector_bytes = self._floats_to_bytes(embedding)
-                pipe.hset(key, mapping={
-                    "doc_id": doc_id,
-                    "content": chunk.get("content", ""),
-                    "embedding": vector_bytes,
-                    "metadata": json.dumps(chunk.get("metadata", {}), ensure_ascii=False),
-                })
+                pipe.hset(
+                    key,
+                    mapping={
+                        "doc_id": doc_id,
+                        "content": chunk.get("content", ""),
+                        "embedding": vector_bytes,
+                        "metadata": json.dumps(
+                            chunk.get("metadata", {}), ensure_ascii=False
+                        ),
+                    },
+                )
                 count += 1
                 # 每 100 条执行一次
                 if count % 100 == 0:
@@ -128,6 +150,16 @@ class RedisVectorStore:
                 await pipe.execute()
 
         logger.info(f"添加文档向量: doc_id={doc_id}, chunks={count}")
+        if chunks:
+            sample_metadata = chunks[0].get("metadata", {})
+            sample_content = chunks[0].get("content", "")[:80].replace("\n", " ")
+            logger.debug(
+                "知识库向量样本: doc_id=%s, embedding_dim=%s, sample_metadata=%s, sample_content=%s",
+                doc_id,
+                len(embeddings[0]) if embeddings else 0,
+                sample_metadata,
+                sample_content,
+            )
         return count
 
     async def search(
@@ -153,18 +185,37 @@ class RedisVectorStore:
         query_vector = self._floats_to_bytes(query_embedding)
         try:
             results = await self._redis.execute_command(
-                "FT.SEARCH", self._index_name,
+                "FT.SEARCH",
+                self._index_name,
                 f"*=>[KNN {top_k} @embedding $query_vec AS score]",
-                "PARAMS", "2", "query_vec", query_vector,
-                "SORTBY", "score",
-                "DIALECT", "2",
-                "RETURN", "3", "content", "score", "metadata",
+                "PARAMS",
+                "2",
+                "query_vec",
+                query_vector,
+                "SORTBY",
+                "score",
+                "DIALECT",
+                "2",
+                "RETURN",
+                "3",
+                "content",
+                "score",
+                "metadata",
             )
         except redis.ResponseError as e:
             logger.error(f"向量检索失败: {e}")
             return []
 
-        return self._parse_search_results(results, score_threshold)
+        raw_total = results[0] if results and isinstance(results[0], int) else 0
+        parsed_results = self._parse_search_results(results, score_threshold)
+        logger.info(
+            "知识库向量检索: top_k=%s, score_threshold=%s, raw_total=%s, parsed_count=%s",
+            top_k,
+            score_threshold,
+            raw_total,
+            len(parsed_results),
+        )
+        return parsed_results
 
     async def delete_by_doc_id(self, doc_id: str) -> int:
         """
@@ -179,11 +230,15 @@ class RedisVectorStore:
         try:
             # 通过 FT.SEARCH 查找该文档的所有块
             results = await self._redis.execute_command(
-                "FT.SEARCH", self._index_name,
+                "FT.SEARCH",
+                self._index_name,
                 f"@doc_id:{{{doc_id}}}",
                 "NOCONTENT",
-                "LIMIT", "0", "10000",
-                "DIALECT", "2",
+                "LIMIT",
+                "0",
+                "10000",
+                "DIALECT",
+                "2",
             )
         except redis.ResponseError as e:
             logger.error(f"查询文档块失败: doc_id={doc_id}, error={e}")
@@ -222,11 +277,15 @@ class RedisVectorStore:
         """
         try:
             results = await self._redis.execute_command(
-                "FT.SEARCH", self._index_name,
+                "FT.SEARCH",
+                self._index_name,
                 f"@doc_id:{{{doc_id}}}",
                 "NOCONTENT",
-                "LIMIT", "0", "0",
-                "DIALECT", "2",
+                "LIMIT",
+                "0",
+                "0",
+                "DIALECT",
+                "2",
             )
             return results[0] if isinstance(results[0], int) else 0
         except redis.ResponseError:
@@ -255,8 +314,9 @@ class RedisVectorStore:
         i = 1
         while i < len(results) - 1:
             key = results[i]
-            fields = results[i + 1]
-            if not isinstance(fields, dict):
+            fields = self._normalize_search_fields(results[i + 1])
+            if not fields:
+                logger.debug("知识库检索结果跳过: key=%s, reason=empty_fields", key)
                 i += 2
                 continue
 
@@ -267,6 +327,12 @@ class RedisVectorStore:
             score = float(raw_score)
 
             if score > score_threshold:
+                logger.debug(
+                    "知识库检索结果过滤: key=%s, score=%s, threshold=%s",
+                    key,
+                    score,
+                    score_threshold,
+                )
                 i += 2
                 continue
 
@@ -288,15 +354,44 @@ class RedisVectorStore:
             # 去掉前缀
             chunk_id = chunk_id.replace(self._key_prefix, "")
 
-            search_results.append(SearchResult(
-                chunkId=chunk_id,
-                content=content,
-                score=score,
-                metadata=metadata,
-            ))
+            search_results.append(
+                SearchResult(
+                    chunk_id=chunk_id,
+                    content=content,
+                    score=score,
+                    metadata=metadata,
+                )
+            )
             i += 2
 
         return search_results
+
+    @staticmethod
+    def _normalize_search_fields(raw_fields: Any) -> Dict[str, Any]:
+        """
+        将 FT.SEARCH 返回字段统一规整为 dict。
+
+        redis-py 在不同命令路径下，字段可能表现为 dict，
+        也可能是 [field1, value1, field2, value2, ...] 的扁平列表。
+        """
+        if isinstance(raw_fields, dict):
+            return raw_fields
+
+        if isinstance(raw_fields, (list, tuple)):
+            normalized: Dict[str, Any] = {}
+            for index in range(0, len(raw_fields) - 1, 2):
+                field_name = raw_fields[index]
+                field_value = raw_fields[index + 1]
+
+                if isinstance(field_name, bytes):
+                    field_name = field_name.decode()
+
+                if isinstance(field_name, str):
+                    normalized[field_name] = field_value
+
+            return normalized
+
+        return {}
 
     @staticmethod
     def _floats_to_bytes(floats: List[float]) -> bytes:

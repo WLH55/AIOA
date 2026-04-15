@@ -3,6 +3,7 @@ FastAPI 应用入口
 
 单端口架构：HTTP 和 WebSocket 共享同一个端口（8888）
 """
+
 import logging
 from contextlib import asynccontextmanager
 
@@ -99,7 +100,14 @@ async def lifespan(app: FastAPI):
     if not settings.DEEPSEEK_API_KEY:
         logger.warning("DEEPSEEK_API_KEY 未配置，AI Agent 功能不可用")
     else:
-        logger.info(f"AI Agent 配置完成: model={settings.DEEPSEEK_MODEL}")
+        logger.info(
+            "AI Agent 配置完成: model=%s, base_url=%s, context_window=%s, chat_max_tokens=%s, summary_model=%s",
+            settings.DEEPSEEK_MODEL,
+            settings.DEEPSEEK_BASE_URL,
+            settings.AI_MODEL_CONTEXT_WINDOW,
+            settings.AI_CHAT_MAX_TOKENS,
+            settings.AI_SUMMARY_MODEL,
+        )
 
     yield
 
@@ -187,7 +195,9 @@ if __name__ == "__main__":
     logger.info("==============================================")
     logger.info(f"正在启动服务...")
     logger.info(f"HTTP API: http://{settings.HOST}:{settings.PORT}")
-    logger.info(f"WebSocket: ws://{settings.HOST}:{settings.PORT}{settings.API_PREFIX}/ws/chat")
+    logger.info(
+        f"WebSocket: ws://{settings.HOST}:{settings.PORT}{settings.API_PREFIX}/ws/chat"
+    )
     logger.info("==============================================")
 
     uvicorn.run(
