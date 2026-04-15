@@ -6,6 +6,7 @@
 """
 
 import logging
+import re
 from typing import List, Dict, Any, Optional
 
 from langchain_core.tools import StructuredTool, BaseTool
@@ -14,6 +15,33 @@ from pydantic import BaseModel, Field
 from app.ai.tools.base import ToolProvider
 
 logger = logging.getLogger(__name__)
+
+
+_QUESTION_FILLERS = [
+    "怎么弄",
+    "怎么做",
+    "怎么办",
+    "怎么操作",
+    "怎么处理",
+    "怎么申请",
+    "怎么走",
+    "是什么",
+    "是啥",
+    "如何",
+    "怎样",
+    "请问",
+]
+
+_DOMAIN_HINTS = {
+    "请假": ["请假流程", "请假审批"],
+    "补卡": ["补卡流程", "补卡审批"],
+    "外出": ["外出审批流程", "外出申请"],
+    "报销": ["报销流程", "报销审批"],
+    "审批": ["审批流程", "审批规定"],
+    "制度": ["制度", "规定", "说明"],
+    "规范": ["规范", "制度", "说明"],
+    "操作": ["操作指南", "操作步骤"],
+}
 
 
 class QueryKnowledgeInput(BaseModel):
@@ -29,6 +57,53 @@ class UpdateKnowledgeInput(BaseModel):
         default_factory=list,
         description="要更新的文档 ID 列表，为空则更新所有待处理文档",
     )
+
+
+def _normalize_question(question: str) -> str:
+    """归一化用户问题，尽量保留核心检索意图。"""
+    normalized = question.strip()
+    normalized = re.sub(r"[？?！!。,.，、：:；;]", " ", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    for filler in _QUESTION_FILLERS:
+        normalized = normalized.replace(filler, " ")
+    normalized = re.sub(r"\s+", " ", normalized).strip()
+    return normalized or question.strip()
+
+
+def _build_search_queries(question: str) -> List[str]:
+    """为知识库检索生成 rewrite query，并保留原问题兜底。"""
+    original = question.strip()
+    normalized = _normalize_question(question)
+
+    rewrite_parts: List[str] = []
+    if normalized:
+        rewrite_parts.append(normalized)
+
+    for keyword, hints in _DOMAIN_HINTS.items():
+        if keyword in question:
+            rewrite_parts.extend(hints)
+
+    rewrite = " ".join(dict.fromkeys(part for part in rewrite_parts if part)).strip()
+
+    queries: List[str] = []
+    if rewrite:
+        queries.append(rewrite)
+    if original and original not in queries:
+        queries.append(original)
+    return queries or [original]
+
+
+def _merge_search_results(*result_groups) -> List[Any]:
+    """按 chunkId 合并多轮召回结果并去重。"""
+    merged: List[Any] = []
+    seen_chunk_ids = set()
+    for group in result_groups:
+        for item in group:
+            if item.chunkId in seen_chunk_ids:
+                continue
+            seen_chunk_ids.add(item.chunkId)
+            merged.append(item)
+    return merged
 
 
 def _make_query_knowledge(userId: str, userName: str):
@@ -56,8 +131,6 @@ def _make_query_knowledge(userId: str, userName: str):
         from app.ai.vectorstore.redis_store import RedisVectorStore
 
         try:
-            # 生成查询向量
-            query_embedding = await embed_text(question)
             # 从应用状态获取 Redis 客户端
             from app.config.redis import get_redis_client
 
@@ -66,11 +139,24 @@ def _make_query_knowledge(userId: str, userName: str):
                 return "知识库服务暂时不可用（Redis 未连接）"
 
             store = RedisVectorStore(redis_client)
-            results = await store.search(query_embedding)
+            search_queries = _build_search_queries(question)
             logger.info(
-                "知识库查询完成: user_id=%s, question_length=%s, result_count=%s",
+                "知识库查询改写: original=%s, queries=%s",
+                question,
+                search_queries,
+            )
+
+            result_groups = []
+            for query in search_queries:
+                query_embedding = await embed_text(query)
+                result_groups.append(await store.search(query_embedding))
+
+            results = _merge_search_results(*result_groups)
+            logger.info(
+                "知识库查询完成: user_id=%s, question_length=%s, query_count=%s, result_count=%s",
                 userId,
                 len(question),
+                len(search_queries),
                 len(results),
             )
 
